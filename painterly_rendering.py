@@ -28,8 +28,8 @@ from IPython.display import display, SVG
 
 
 def load_renderer(args, target_im=None, mask=None):
-    renderer = Painter(num_strokes=args.num_paths, args=args,
-                       num_segments=args.num_segments,
+    renderer = Painter(num_phosphenes=args.num_phosphenes, args=args,
+                       # num_segments=args.num_segments,
                        imsize=args.image_scale,
                        device=args.device,
                        target_im=target_im,
@@ -84,7 +84,7 @@ def main(args):
     renderer.set_random_noise(0)
     img = renderer.init_image(stage=0)
     optimizer.init_optimizers()
-    
+
     # not using tdqm for jupyter demo
     if args.display:
         epoch_range = range(args.num_iter)
@@ -113,8 +113,8 @@ def main(args):
                 f"{args.output_dir}/svg_logs", f"svg_iter{epoch}")
         if epoch % args.eval_interval == 0:
             with torch.no_grad():
-                losses_dict_eval = loss_func(sketches, inputs, renderer.get_color_parameters(
-                ), renderer.get_points_parans(), counter, optimizer, mode="eval")
+                losses_dict_eval = loss_func(sketches, inputs,  # renderer.get_color_parameters(),
+                                             renderer.get_points_params(), counter, optimizer, mode="eval")
                 loss_eval = sum(list(losses_dict_eval.values()))
                 configs_to_save["loss_eval"].append(loss_eval.item())
                 for k in losses_dict_eval.keys():
@@ -156,7 +156,7 @@ def main(args):
         if counter == 0 and args.attention_init:
             utils.plot_atten(renderer.get_attn(), renderer.get_thresh(), inputs, renderer.get_inds(),
                              args.use_wandb, "{}/{}.jpg".format(
-                                 args.output_dir, "attention_map"),
+                    args.output_dir, "attention_map"),
                              args.saliency_model, args.display_logs)
 
         if args.use_wandb:
@@ -173,6 +173,7 @@ def main(args):
         path_svg, args.use_wandb, args.device, best_iter, best_loss, "best total")
 
     return configs_to_save
+
 
 if __name__ == "__main__":
     args = config.parse_arguments()

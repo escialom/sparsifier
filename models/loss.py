@@ -46,7 +46,7 @@ class Loss(nn.Module):
                 if epoch > self.start_clip:
                     self.losses_to_apply.append("clip")
 
-    def forward(self, sketches, targets, color_parameters, renderer, epoch, points_optim=None, mode="train"):
+    def forward(self, sketches, targets, renderer, epoch, points_optim=None, mode="train"):
         loss = 0
         self.update_losses_to_apply(epoch)
 
@@ -89,15 +89,15 @@ class CLIPLoss(torch.nn.Module):
             [clip_preprocess.transforms[-1]])  # clip normalisation
         self.device = args.device
         self.NUM_AUGS = args.num_aug_clip
-        augemntations = []
+        augmentations = []
         if "affine" in args.augemntations:
-            augemntations.append(transforms.RandomPerspective(
+            augmentations.append(transforms.RandomPerspective(
                 fill=0, p=1.0, distortion_scale=0.5))
-            augemntations.append(transforms.RandomResizedCrop(
+            augmentations.append(transforms.RandomResizedCrop(
                 224, scale=(0.8, 0.8), ratio=(1.0, 1.0)))
-        augemntations.append(
+        augmentations.append(
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)))
-        self.augment_trans = transforms.Compose(augemntations)
+        self.augment_trans = transforms.Compose(augmentations)
 
         self.calc_target = True
         self.include_target_in_aug = args.include_target_in_aug
@@ -383,15 +383,15 @@ class CLIPConvLoss(torch.nn.Module):
         self.device = args.device
         self.num_augs = self.args.num_aug_clip
 
-        augemntations = []
-        if "affine" in args.augemntations:
-            augemntations.append(transforms.RandomPerspective(
+        augmentations = []
+        if "affine" in args.augmentations:
+            augmentations.append(transforms.RandomPerspective(
                 fill=0, p=1.0, distortion_scale=0.5))
-            augemntations.append(transforms.RandomResizedCrop(
+            augmentations.append(transforms.RandomResizedCrop(
                 224, scale=(0.8, 0.8), ratio=(1.0, 1.0)))
-        augemntations.append(
+        augmentations.append(
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)))
-        self.augment_trans = transforms.Compose(augemntations)
+        self.augment_trans = transforms.Compose(augmentations)
 
         self.clip_fc_layer_dims = None  # self.args.clip_fc_layer_dims
         self.clip_conv_layer_dims = None  # self.args.clip_conv_layer_dims
