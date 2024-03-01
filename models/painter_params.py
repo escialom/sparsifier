@@ -112,13 +112,13 @@ class Painter(torch.nn.Module):
         img_np = img.squeeze().cpu().numpy()
 
         # Plot the image
-        imshow((img_np*255).astype(int), vmin=0, vmax=img_np.max())
+        imshow((img_np*255).astype(int), cmap='gray')
         plt.axis('off')  # Turn off axis
         plt.show()
 
         # Or save the image
-        img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
-        img_pil.save('rendered_image.png')  # Save the image
+        # img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
+        # img_pil.save('rendered_image.png')  # Save the image
         return img
         # utils.imwrite(img.cpu(), '{}/init.png'.format(args.output_dir), gamma=args.gamma, use_wandb=args.use_wandb, wandb_name="init")
 
@@ -156,7 +156,16 @@ class Painter(torch.nn.Module):
 
         # Generate phosphene on the grid. Luminance values normalized between 0 and 1
         phosphene = torch.exp(-(x_grid ** 2 + y_grid ** 2) / (2 * self.args.phosphene_radius ** 2))
-        phosphene /= phosphene.sum()
+        # phosphene /= phosphene.max()
+
+        # Min-Max normalization to scale phosphene to [0, 1]
+        min_val, max_val = phosphene.min(), phosphene.max()
+        phosphene_scaled = (phosphene - min_val) / (max_val - min_val)
+
+        # Gamma Correction with gamma < 1 to brighten the values
+        gamma = 0.5  # Random value
+        phosphene_corrected = phosphene_scaled ** gamma
+        phosphene = phosphene_corrected
 
         return phosphene.unsqueeze(0)
 
@@ -180,20 +189,34 @@ class Painter(torch.nn.Module):
         scale_x = canvas.shape[0] / elem_xy_locations.shape[0]
         scale_y = canvas.shape[1] / elem_xy_locations.shape[1]
 
-        for x in range(elem_xy_locations.shape[0]):
-            for y in range(elem_xy_locations.shape[1]):
-                if elem_xy_locations[x, y] != 0:
-                    # Calculate the scaled positions
-                    x_pos, y_pos = int(x * scale_x), int(y * scale_y)
-                    # pad the element to the canvas size
-                    padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
-                    padded_element = F.pad(elements, padding)
-                    # blend the element locations to the output
-                    blending_weight = torch.sigmoid(elem_xy_locations[x, y])
-                    # Apply weighted blending
-                    output_img += blending_weight * padded_element[0]
+        for coord in elem_xy_locations:
+            # Extract the actual x and y positions from each coordinate pair
+            x_pos, y_pos = int(coord[0]), int(coord[1])
 
+            padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
+            padded_element = F.pad(elements, padding)
+
+            blending_weight = 1  # Placeholder, adjust according to your actual logic
+            # Apply weighted blending
+            output_img += blending_weight * padded_element[0]
+
+        # for x in range(elem_xy_locations.shape[0]):
+        #     for y in range(elem_xy_locations.shape[1]):
+        #         if elem_xy_locations[x, y] != 0:
+        #             # Calculate the scaled positions
+        #             # x_pos, y_pos = int(x * scale_x), int(y * scale_y)
+        #             x_pos, y_pos = int(x), int(y)
+        #             # pad the element to the canvas size
+        #             padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
+        #             padded_element = F.pad(elements, padding)
+        #             # blend the element locations to the output
+        #             blending_weight = torch.sigmoid(elem_xy_locations[x, y])
+        #             # Apply weighted blending
+        #             output_img += blending_weight * padded_element[0]
+        #
         return output_img
+
+
 
     def render_warp(self):
         # if self.opacity_optim:
