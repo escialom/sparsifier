@@ -113,7 +113,8 @@ class Painter(torch.nn.Module):
 
         # Plot the image
         imshow((img_np*255).astype(int), cmap='gray')
-        plt.axis('off')  # Turn off axis
+        plt.axis('off')
+        plt.title('Initialized image')
         plt.show()
 
         # Or save the image
@@ -196,7 +197,7 @@ class Painter(torch.nn.Module):
             padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
             padded_element = F.pad(elements, padding)
 
-            blending_weight = 1  # Placeholder, adjust according to your actual logic
+            blending_weight = 1 # Some arbitrary value now
             # Apply weighted blending
             output_img += blending_weight * padded_element[0]
 
