@@ -5,6 +5,8 @@ import sketch_utils as utils
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import imshow
 from PIL import Image
 from scipy.ndimage.filters import gaussian_filter
 from skimage.color import rgb2gray
@@ -108,6 +110,12 @@ class Painter(torch.nn.Module):
         img = img.permute(0, 1, 2).to(self.device) # NHW -> NHW
         # Convert tensor to numpy array
         img_np = img.squeeze().cpu().numpy()
+
+        # Plot the image
+        imshow((img_np*255).astype(int), vmin=0, vmax=img_np.max())
+        plt.axis('off')  # Turn off axis
+        plt.show()
+
         # Or save the image
         img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
         img_pil.save('rendered_image.png')  # Save the image
@@ -132,7 +140,9 @@ class Painter(torch.nn.Module):
         point_locations.append(phosphene_centers)
 
         point_locations = torch.tensor(point_locations).to(self.device)
-        point_locations[:, 0] *= self.canvas_width #TODO check if these steps make sense
+        point_locations = point_locations.squeeze()
+
+        point_locations[:, 0] *= self.canvas_width
         point_locations[:, 1] *= self.canvas_height
 
         return point_locations
@@ -170,9 +180,9 @@ class Painter(torch.nn.Module):
         scale_x = canvas.shape[0] / elem_xy_locations.shape[0]
         scale_y = canvas.shape[1] / elem_xy_locations.shape[1]
 
-        for x in range(elem_xy_locations.shape[0]): #loop iterates over each row, 16 times.x=0-15
-            for y in range(elem_xy_locations.shape[1]): #loops over each column within the current row, 2 times. y=0-1
-                if elem_xy_locations[x, y] != 0: #TODO error occurs. I think what happens is that at one point y becomes 2, which is not possible according to the tensorsize
+        for x in range(elem_xy_locations.shape[0]):
+            for y in range(elem_xy_locations.shape[1]):
+                if elem_xy_locations[x, y] != 0:
                     # Calculate the scaled positions
                     x_pos, y_pos = int(x * scale_x), int(y * scale_y)
                     # pad the element to the canvas size
