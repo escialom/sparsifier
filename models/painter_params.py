@@ -10,6 +10,7 @@ from scipy.ndimage.filters import gaussian_filter
 from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
 from torchvision import transforms
+from torch import Tensor
 
 
 class Painter(torch.nn.Module):
@@ -34,10 +35,12 @@ class Painter(torch.nn.Module):
         self.noise_thresh = args.noise_thresh
         self.softmax_temp = args.softmax_temp
 
-        self.points = []
+        self.point_locations = []
         # self.shape_groups = []
         self.device = device
+        self.canvas = args.canvas
         self.canvas_width, self.canvas_height = imsize, imsize
+        self.patch_size = args.patch_size
         self.points_vars = []
         # self.color_vars = []
         # self.color_vars_threshold = args.color_vars_threshold
@@ -68,11 +71,12 @@ class Painter(torch.nn.Module):
         if stage > 0:
             # if multi stages training than add new strokes on existing ones
             # don't optimize on previous strokes
-            self.optimize_flag = [False for i in range(len(self.points))]
+            self.optimize_flag = [False for i in range(len(self.point_locations))]
             for i in range(self.points_per_stage):
                 # point_color = torch.tensor([0.0, 0.0, 0.0, 1.0]) #was stroke_color
-                points = self.get_point_locations()
-                self.points.append(points)
+                point_locations = self.get_point_locations()
+                self.point_locations.append(point_locations)
+
                 # path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
                 #                                     fill_color = None,
                 #                                     stroke_color = stroke_color)
@@ -84,25 +88,29 @@ class Painter(torch.nn.Module):
             if self.path_svg != "none":
                 self.canvas_width, self.canvas_height, self.shapes, self.shape_groups = utils.load_svg(self.path_svg)
                 # if you want to add more strokes to existing ones and optimize on all of them
-                num_phosphenes_exists = len(self.points)
+                num_phosphenes_exists = len(self.point_locations)
 
-            for i in range(num_phosphenes_exists, self.num_phosphenes):
                 # stroke_color = torch.tensor([0.0, 0.0, 0.0, 1.0])
-                points = self.get_point_locations()
-                self.points.append(points)
+            point_locations = self.get_point_locations().squeeze(0)
+            self.point_locations.append(point_locations)
 
-                # path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
-                #                                     fill_color = None,
-                #                                     stroke_color = stroke_color)
-                # self.shape_groups.append(path_group)
-            self.optimize_flag = [True for i in range(len(self.points))]
+            # path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
+            #                                     fill_color = None,
+            #                                     stroke_color = stroke_color)
+            # self.shape_groups.append(path_group)
+            self.optimize_flag = [True for i in range(len(self.point_locations))]
 
         img = self.render_warp()
-        img = img[:, :, 3:4] * img[:, :, :3] + torch.ones(img.shape[0], img.shape[1], 3, device = self.device) * (1 - img[:, :, 3:4])
-        img = img[:, :, :3]
-        # Convert img from HWC to NCHW
+        # img = img[:, :, 3:4] * img[:, :, :3] + torch.ones(img.shape[0], img.shape[1], 3, device = self.device) * (1 - img[:, :, 3:4])
+        # img = img[:, :, :3]
+        # Convert img from HW to NHW
         img = img.unsqueeze(0)
-        img = img.permute(0, 3, 1, 2).to(self.device) # NHWC -> NCHW
+        img = img.permute(0, 1, 2).to(self.device) # NHW -> NHW
+        # Convert tensor to numpy array
+        img_np = img.squeeze().cpu().numpy()
+        # Or save the image
+        img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
+        img_pil.save('rendered_image.png')  # Save the image
         return img
         # utils.imwrite(img.cpu(), '{}/init.png'.format(args.output_dir), gamma=args.gamma, use_wandb=args.use_wandb, wandb_name="init")
 
@@ -124,36 +132,47 @@ class Painter(torch.nn.Module):
         point_locations.append(phosphene_centers)
 
         point_locations = torch.tensor(point_locations).to(self.device)
-        point_locations[:, 0] *= self.canvas_width
+        point_locations[:, 0] *= self.canvas_width #TODO check if these steps make sense
         point_locations[:, 1] *= self.canvas_height
 
-        return point_locations # what is the type of this. should be torch tensor?
+        return point_locations
 
     def generate_phosphene(self) -> Tensor:
         """Generates a phosphene with a given radius on a patch."""
         # Define grid of phosphene
-        half_patch = int(self.args.patch_size // 2)
+        half_patch = int(self.patch_size // 2)
         x = torch.arange(start=-half_patch, end=half_patch + 1)
         x_grid, y_grid = torch.meshgrid([x, x])
 
         # Generate phosphene on the grid. Luminance values normalized between 0 and 1
         phosphene = torch.exp(-(x_grid ** 2 + y_grid ** 2) / (2 * self.args.phosphene_radius ** 2))
         phosphene /= phosphene.sum()
+
         return phosphene.unsqueeze(0)
+
+    @staticmethod
+    def calculate_padding(x_pos: int, y_pos: int, smoothed_element: Tensor, canvas: Tensor):
+        pad_top = max(y_pos - smoothed_element.shape[2] // 2, 0)
+        pad_left = max(x_pos - smoothed_element.shape[1] // 2, 0)
+        pad_bottom = max(canvas.shape[1] - pad_top - smoothed_element.shape[2], 0)
+        pad_right = max(canvas.shape[0] - pad_left - smoothed_element.shape[1], 0)
+        return (pad_left, pad_right, pad_top, pad_bottom)
 
     def _render(self) -> torch.Tensor:
         elements = self.generate_phosphene()
-        elem_xy_locations: torch.Tensor = self.points #what is the type of this, i think it is a tensor but it says list
-        canvas = self.args.canvas.clone()
+
+        elem_xy_locations_pre = self.point_locations
+        elem_xy_locations: torch.Tensor = elem_xy_locations_pre[0]
+        canvas = self.canvas.clone()
         output_img = torch.zeros_like(canvas)
 
         # Compute the scaling factor
         scale_x = canvas.shape[0] / elem_xy_locations.shape[0]
         scale_y = canvas.shape[1] / elem_xy_locations.shape[1]
 
-        for x in range(elem_xy_locations.shape[0]):
-            for y in range(elem_xy_locations.shape[1]):
-                if elem_xy_locations[y, x] != 0:
+        for x in range(elem_xy_locations.shape[0]): #loop iterates over each row, 16 times.x=0-15
+            for y in range(elem_xy_locations.shape[1]): #loops over each column within the current row, 2 times. y=0-1
+                if elem_xy_locations[x, y] != 0: #TODO error occurs. I think what happens is that at one point y becomes 2, which is not possible according to the tensorsize
                     # Calculate the scaled positions
                     x_pos, y_pos = int(x * scale_x), int(y * scale_y)
                     # pad the element to the canvas size
@@ -180,17 +199,16 @@ class Painter(torch.nn.Module):
         #         for path in self.shapes:
         #             path.points.data.add_(eps * torch.randn_like(path.points))
 
-
         img = self._render()
         return img
 
     def parameters(self):
         self.points_vars = []
         # points' location optimization
-        for i, point in enumerate(self.points):
+        for i, point in enumerate(self.point_locations):
             if self.optimize_flag[i]:
-                self.points.requires_grad = True
-                self.points_vars.append(self.points)
+                self.point_locations.requires_grad = True
+                self.points_vars.append(self.point_locations)
         return self.points_vars
 
     def get_points_params(self):
@@ -214,16 +232,16 @@ class Painter(torch.nn.Module):
 
     def save_png(self, output_dir, name, img):
         canvas_size = (self.canvas_width, self.canvas_height)
-        img = self._render() #here it is a Tensor
+        img = self._render()  # here it is a Tensor
 
         # Convert tensor to PIL Image
-        img = transforms.ToPILImage()(img)
+        img = transforms.ToPILImage(img)
 
         img.save('{}/{}.png'.format(output_dir, name), format='PNG', size=canvas_size)
 
     def dino_attn(self):
-        patch_size=8 # dino hyperparameter
-        threshold=0.6
+        patch_size = 8  # dino hyperparameter
+        threshold = 0.6
 
         # for dino model
         mean_imagenet = torch.Tensor([0.485, 0.456, 0.406])[None,:,None,None].to(self.device)
@@ -321,7 +339,7 @@ class Painter(torch.nn.Module):
         self.inds_normalised = np.zeros(self.inds.shape)
         self.inds_normalised[:, 0] =  self.inds[:, 1] / self.canvas_width
         self.inds_normalised[:, 1] =  self.inds[:, 0] / self.canvas_height
-        self.inds_normalised = self.inds_normalised.tolist()
+        self.inds_normalised = self.inds_normalised.tolist() #TODO do we want this? or do we like the tuple format that inds has
         return attn_map_soft
 
     def set_inds_dino(self):
@@ -396,7 +414,7 @@ class Painter(torch.nn.Module):
         if epoch % self.args.save_interval == 0:
             self.add_random_noise = False
         else:
-            self.add_random_noise = "noise" in self.args.augemntations
+            self.add_random_noise = "noise" in self.args.augmentations
 
 
 class PainterOptimizer:

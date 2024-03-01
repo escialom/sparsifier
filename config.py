@@ -4,7 +4,8 @@ import random
 
 import numpy as np
 import torch
-import wandb
+from torch import Tensor
+# import wandb
 
 
 def set_seed(seed):
@@ -21,17 +22,26 @@ def parse_arguments():
     # =================================
     # ============ general ============
     # =================================
-    parser.add_argument("target", help="target image path")
-    parser.add_argument("--output_dir", type=str,
+    abs_path = os.path.abspath(os.getcwd())
+    parser.add_argument("--target",default= f"{abs_path}/target_images/camel.png", help="target image path")
+    parser.add_argument("--target_file", type=str, default="camel.png",
+                        help="target image file, located in <target_images>")
+    parser.add_argument("--output_dir", type=str, default="output_sketches",
                         help="directory to save the output images and loss")
     parser.add_argument("--path_svg", type=str, default="none",
                         help="if you want to load an svg file and train from it")
     parser.add_argument("--use_gpu", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--mask_object", type=int, default=0)
-    parser.add_argument("--fix_scale", type=int, default=0)
+    parser.add_argument("--mask_object", type=int, default=0, help="if the target image contains background, it's better to mask it out")
+    parser.add_argument("--fix_scale", type=int, default=0, help="if the target image is not squared, it is recommended to fix the scale")
     parser.add_argument("--display_logs", type=int, default=0)
     parser.add_argument("--display", type=int, default=0)
+    parser.add_argument("--multiprocess", type=int, default=0,
+                        help="recommended to use multiprocess if your computer has enough memory")
+    parser.add_argument('-colab', action='store_true')
+    parser.add_argument('-cpu', action='store_true')
+    parser.add_argument('-display', action='store_true')
+    parser.add_argument('--gpunum', type=int, default=0)
 
     # =================================
     # ============ wandb ============
@@ -44,10 +54,12 @@ def parse_arguments():
     # =================================
     # =========== training ============
     # =================================
-    parser.add_argument("--num_iter", type=int, default=500,
-                        help="number of optimization iterations")
+    parser.add_argument("--num_iter", type=int, default=2001,
+                        help="number of optimization iterations") #default = 500
     parser.add_argument("--num_stages", type=int, default=1,
                         help="training stages, you can train x strokes, then freeze them and train another x strokes etc.")
+    parser.add_argument("--num_sketches", type=int, default=3,
+                        help="it is recommended to draw 3 sketches and automatically chose the best one")
     parser.add_argument("--lr_scheduler", type=int, default=0)
     parser.add_argument("--lr", type=float, default=1.0)
     #parser.add_argument("--color_lr", type=float, default=0.01)
@@ -57,17 +69,22 @@ def parse_arguments():
     parser.add_argument("--save_interval", type=int, default=10)
     parser.add_argument("--eval_interval", type=int, default=10)
     parser.add_argument("--image_scale", type=int, default=224)
+    parser.add_argument('--canvas', type=Tensor,
+                        help='Output image size. This should match to downstream model input size.',
+                        default=torch.zeros([224, 224]))
 
     # =================================
-    # ======== strokes params =========
+    # ======== phosphene params =========
     # =================================
     parser.add_argument("--num_phosphenes", type=int,
-                        default=16, help="number of phosphenes") #TODO: num_phosphenes
+                        default=16, help="number of phosphenes used to generate the image, this defines the level of density.") #TODO: num_phosphenes
     #parser.add_argument("--width", type=float,
     #                    default=1.5, help="stroke width")
     #parser.add_argument("--control_points_per_seg", type=int, default=4)
     #parser.add_argument("--num_segments", type=int, default=1,
     #                    help="number of segments for each stroke, each stroke is a bezier curve with 4 control points")
+    parser.add_argument('--patch_size', type=int, help='Size of each of the patches of phosphenes.', default=8) #10
+    parser.add_argument('--phosphene_radius', type=int, help='Radius of the phosphene.', default=1.2) #1.5
     parser.add_argument("--attention_init", type=int, default=1,
                         help="if True, use the attention heads of Dino model to set the location of the initial strokes")
     parser.add_argument("--saliency_model", type=str, default="clip")
@@ -108,6 +125,8 @@ def parse_arguments():
     args = parser.parse_args()
     set_seed(args.seed)
 
+    assert args.image_scale % args.patch_size == 0 #TODO change patch_size to 8 or 7? and change phosphene radius as well accordingly on the same scale?
+
     args.clip_conv_layer_weights = [
         float(item) for item in args.clip_conv_layer_weights.split(',')]
 
@@ -122,17 +141,17 @@ def parse_arguments():
     if not os.path.exists(svg_logs_dir):
         os.mkdir(svg_logs_dir)
 
-    if args.use_wandb:
-        wandb.init(project=args.wandb_project_name, entity=args.wandb_user,
-                   config=args, name=args.wandb_name, id=wandb.util.generate_id())
+    # if args.use_wandb:
+    #     wandb.init(project=args.wandb_project_name, entity=args.wandb_user,
+    #                config=args, name=args.wandb_name, id=wandb.util.generate_id())
 
     if args.use_gpu:
         args.device = torch.device("cuda" if (
             torch.cuda.is_available() and torch.cuda.device_count() > 0) else "cpu")
     else:
         args.device = torch.device("cpu")
-    pydiffvg.set_use_gpu(torch.cuda.is_available() and args.use_gpu) #TODO: edit this
-    pydiffvg.set_device(args.device) #TODO: edit this
+    # pydiffvg.set_use_gpu(torch.cuda.is_available() and args.use_gpu) #TODO: edit this
+    # pydiffvg.set_device(args.device) #TODO: edit this
     return args
 
 

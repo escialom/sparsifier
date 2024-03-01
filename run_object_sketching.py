@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from IPython.display import Image as Image_colab
 from IPython.display import display, SVG, clear_output
-from ipywidgets import IntSlider, Output, IntProgress, Button
+# from ipywidgets import IntSlider, Output, IntProgress, Button
 import time
 
 warnings.filterwarnings('ignore')
@@ -17,7 +17,7 @@ warnings.simplefilter('ignore')
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--target_file", type=str,
+parser.add_argument("--target_file", type=str, default="camel.png",
                     help="target image file, located in <target_images>")
 parser.add_argument("--num_phosphenes", type=int, default=16,
                     help="number of phosphenes used to generate the image, this defines the level of density.")
@@ -38,25 +38,19 @@ parser.add_argument('--gpunum', type=int, default=0)
 
 args = parser.parse_args()
 
-args.target_file = "C:/Users/vanholk/sparsifier/target_images/camel.png"  # I added this because I dont know how to assign value to the target_file otherwise
-
 multiprocess = not args.colab and args.num_sketches > 1 and args.multiprocess
 
 abs_path = os.path.abspath(os.getcwd())
 
-target = os.path.join(abs_path, "target_images", args.target_file)
+target = f"{abs_path}/target_images/{args.target_file}" # These lines gave wrong formatting
 assert os.path.isfile(target), f"{target} does not exist!"
-
-# target = f"{abs_path}/target_images/{args.target_file}" # These lines gave wrong formatting
-# assert os.path.isfile(target), f"{target} does not exist!"
 
 if not os.path.isfile(f"{abs_path}/U2Net_/saved_models/u2net.pth"):
     sp.run(["gdown", "https://drive.google.com/uc?id=1ao1ovG1Qtx4b7EoskHXmi2E9rp5CHLcZ",
-            "-O", "U2Net_/saved_models/"])
+            "-O", "U2Net_/saved_models/"]) #TODO here an error occurs
 
 test_name = os.path.splitext(args.target_file)[0]
-output_dir = os.path.join(abs_path, "output_sketches", test_name)
-# output_dir = f"{abs_path}/output_sketches/{test_name}/" #this line gave wrong formatting
+output_dir = f"{abs_path}/output_sketches/{test_name}/" #this line gave wrong formatting
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
@@ -144,7 +138,7 @@ if multiprocess:
     P = mp.Pool(ncpus)  # Generate pool of workers
 
 for seed in seeds:
-    wandb_name = f"{test_name}_{args.num_strokes}strokes_seed{seed}"
+    wandb_name = f"{test_name}_{args.num_phosphenes}phosphenes_seed{seed}"
     if multiprocess:
         P.apply_async(run, (seed, wandb_name))
     else:
@@ -160,4 +154,3 @@ if multiprocess:
 sorted_final = dict(sorted(losses_all.items(), key=lambda item: item[1]))
 copyfile(f"{output_dir}/{list(sorted_final.keys())[0]}/best_iter.svg",
          f"{output_dir}/{list(sorted_final.keys())[0]}_best.svg")
-

@@ -90,7 +90,7 @@ class CLIPLoss(torch.nn.Module):
         self.device = args.device
         self.NUM_AUGS = args.num_aug_clip
         augmentations = []
-        if "affine" in args.augemntations:
+        if "affine" in args.augmentations:
             augmentations.append(transforms.RandomPerspective(
                 fill=0, p=1.0, distortion_scale=0.5))
             augmentations.append(transforms.RandomResizedCrop(
@@ -133,7 +133,7 @@ class CLIPLoss(torch.nn.Module):
 
         for n in range(self.NUM_AUGS):
             loss_clip += (1. - torch.cosine_similarity(
-                sketch_features[n:n+1], self.targets_features, dim=1))
+                sketch_features[n:n + 1], self.targets_features, dim=1))
         self.counter += 1
         return loss_clip
         # return 1. - torch.cosine_similarity(sketches_features, self.targets_features)
@@ -440,7 +440,7 @@ class CLIPConvLoss(torch.nn.Module):
         if self.clip_fc_loss_weight:
             # fc distance is always cos
             fc_loss = (1 - torch.cosine_similarity(xs_fc_features,
-                       ys_fc_features, dim=1)).mean()
+                                                   ys_fc_features, dim=1)).mean()
             conv_loss_dict["fc"] = fc_loss * self.clip_fc_loss_weight
 
         self.counter += 1
@@ -452,6 +452,7 @@ class CLIPConvLoss(torch.nn.Module):
                 x = m.relu(bn(conv(x)))
             x = m.avgpool(x)
             return x
+
         x = x.type(self.visual_model.conv1.weight.dtype)
         x = stem(self.visual_model, x)
         x1 = self.layer1(x)
@@ -460,4 +461,3 @@ class CLIPConvLoss(torch.nn.Module):
         x4 = self.layer4(x3)
         y = self.att_pool2d(x4)
         return y, [x, x1, x2, x3, x4]
-        

@@ -1,8 +1,4 @@
 import warnings
-
-warnings.filterwarnings('ignore')
-warnings.simplefilter('ignore')
-
 import argparse
 import math
 import os
@@ -15,7 +11,8 @@ import PIL
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import wandb
+import subprocess as sp
+# import wandb
 from PIL import Image
 from torchvision import models, transforms
 from tqdm.auto import tqdm, trange
@@ -25,6 +22,9 @@ import sketch_utils as utils
 from models.loss import Loss
 from models.painter_params import Painter, PainterOptimizer
 from IPython.display import display, SVG
+
+warnings.filterwarnings('ignore')
+warnings.simplefilter('ignore')
 
 
 def load_renderer(args, target_im=None, mask=None):
@@ -139,14 +139,14 @@ def main(args):
                             inputs, sketches, args.output_dir, counter, use_wandb=args.use_wandb, title="best_iter.jpg")
                         renderer.save_svg(args.output_dir, "best_iter")
 
-                if args.use_wandb:
-                    wandb.run.summary["best_loss"] = best_loss
-                    wandb.run.summary["best_loss_fc"] = best_fc_loss
-                    wandb_dict = {"delta": cur_delta,
-                                  "loss_eval": loss_eval.item()}
-                    for k in losses_dict_eval.keys():
-                        wandb_dict[k + "_eval"] = losses_dict_eval[k].item()
-                    wandb.log(wandb_dict, step=counter)
+                # if args.use_wandb:
+                #     wandb.run.summary["best_loss"] = best_loss
+                #     wandb.run.summary["best_loss_fc"] = best_fc_loss
+                #     wandb_dict = {"delta": cur_delta,
+                #                   "loss_eval": loss_eval.item()}
+                #     for k in losses_dict_eval.keys():
+                #         wandb_dict[k + "_eval"] = losses_dict_eval[k].item()
+                #     wandb.log(wandb_dict, step=counter)
 
                 if abs(cur_delta) <= min_delta:
                     if terminate:
@@ -159,11 +159,11 @@ def main(args):
                     args.output_dir, "attention_map"),
                              args.saliency_model, args.display_logs)
 
-        if args.use_wandb:
-            wandb_dict = {"loss": loss.item(), "lr": optimizer.get_lr()}
-            for k in losses_dict.keys():
-                wandb_dict[k] = losses_dict[k].item()
-            wandb.log(wandb_dict, step=counter)
+        # if args.use_wandb:
+        #     wandb_dict = {"loss": loss.item(), "lr": optimizer.get_lr()}
+        #     for k in losses_dict.keys():
+        #         wandb_dict[k] = losses_dict[k].item()
+        #     wandb.log(wandb_dict, step=counter)
 
         counter += 1
 
@@ -177,15 +177,17 @@ def main(args):
 
 if __name__ == "__main__":
     args = config.parse_arguments()
+
     final_config = vars(args)
-    try:
-        configs_to_save = main(args)
-    except BaseException as err:
-        print(f"Unexpected error occurred:\n {err}")
-        print(traceback.format_exc())
-        sys.exit(1)
+    # try:
+    configs_to_save = main(args)
+    # except BaseException as err:
+    #     print(f"Unexpected error occurred:\n {err}")
+    #     print(traceback.format_exc())
+    #     sys.exit(1)
     for k in configs_to_save.keys():
         final_config[k] = configs_to_save[k]
     np.save(f"{args.output_dir}/config.npy", final_config)
-    if args.use_wandb:
-        wandb.finish()
+    # if args.use_wandb:
+    #     wandb.finish()
+
