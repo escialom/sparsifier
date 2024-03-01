@@ -4,7 +4,6 @@ import imageio
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pydiffvg
 import skimage
 import skimage.io
 import torch
@@ -33,7 +32,7 @@ def imwrite(img, filename, gamma=2.2, normalize=False, use_wandb=False, wandb_na
     if img.ndim == 2:
         # repeat along the third dimension
         img = np.expand_dims(img, 2)
-    img[:, :, :3] = np.power(img[:, :, :3], 1.0/gamma)
+    img[:, :, :3] = np.power(img[:, :, :3], 1.0 / gamma)
     img = (img * 255).astype(np.uint8)
 
     skimage.io.imsave(filename, img, check_contrast=False)
@@ -89,15 +88,15 @@ def log_sketch_summary_final(path_svg, use_wandb, device, epoch, loss, title):
         canvas_width, canvas_height, shapes, shape_groups)
     img = _render(canvas_width,  # width
                   canvas_height,  # height
-                  2,   # num_samples_x
-                  2,   # num_samples_y
-                  0,   # seed
+                  2,  # num_samples_x
+                  2,  # num_samples_y
+                  0,  # seed
                   None,
                   *scene_args)
 
     img = img[:, :, 3:4] * img[:, :, :3] + \
-        torch.ones(img.shape[0], img.shape[1], 3,
-                   device=device) * (1 - img[:, :, 3:4])
+          torch.ones(img.shape[0], img.shape[1], 3,
+                     device=device) * (1 - img[:, :, 3:4])
     img = img[:, :, :3]
     plt.imshow(img.cpu().numpy())
     plt.axis("off")
@@ -141,14 +140,14 @@ def read_svg(path_svg, device, multiply=False):
         canvas_width, canvas_height, shapes, shape_groups)
     img = _render(canvas_width,  # width
                   canvas_height,  # height
-                  2,   # num_samples_x
-                  2,   # num_samples_y
-                  0,   # seed
+                  2,  # num_samples_x
+                  2,  # num_samples_y
+                  0,  # seed
                   None,
                   *scene_args)
     img = img[:, :, 3:4] * img[:, :, :3] + \
-        torch.ones(img.shape[0], img.shape[1], 3,
-                   device=device) * (1 - img[:, :, 3:4])
+          torch.ones(img.shape[0], img.shape[1], 3,
+                     device=device) * (1 - img[:, :, 3:4])
     img = img[:, :, :3]
     return img
 
@@ -213,7 +212,7 @@ def plot_attn_clip(attn, threshold_map, inputs, inds, use_wandb, output_path, di
 
     plt.subplot(1, 3, 3)
     threshold_map_ = (threshold_map - threshold_map.min()) / \
-        (threshold_map.max() - threshold_map.min())
+                     (threshold_map.max() - threshold_map.min())
     plt.imshow(threshold_map_, interpolation='nearest', vmin=0, vmax=1)
     plt.title("prob softmax")
     plt.scatter(inds[:, 1], inds[:, 0], s=10, c='red', marker='o')
@@ -280,9 +279,9 @@ def get_mask_u2net(args, pil_im):
     mask = resize(mask, (h, w), anti_aliasing=False)
     mask[mask < 0.5] = 0
     mask[mask >= 0.5] = 1
-    
+
     # predict_np = predict.clone().cpu().data.numpy()
-    im = Image.fromarray((mask[:, :, 0]*255).astype(np.uint8)).convert('RGB')
+    im = Image.fromarray((mask[:, :, 0] * 255).astype(np.uint8)).convert('RGB')
     im.save(f"{args.output_dir}/mask.png")
 
     im_np = np.array(pil_im)

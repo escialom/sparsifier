@@ -1,15 +1,10 @@
 import sys
 import warnings
-
-warnings.filterwarnings('ignore')
-warnings.simplefilter('ignore')
-
 import argparse
 import multiprocessing as mp
 import os
 import subprocess as sp
 from shutil import copyfile
-
 import numpy as np
 import torch
 from IPython.display import Image as Image_colab
@@ -17,11 +12,15 @@ from IPython.display import display, SVG, clear_output
 from ipywidgets import IntSlider, Output, IntProgress, Button
 import time
 
+warnings.filterwarnings('ignore')
+warnings.simplefilter('ignore')
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--target_file", type=str,
                     help="target image file, located in <target_images>")
-parser.add_argument("--num_strokes", type=int, default=16,
-                    help="number of strokes used to generate the sketch, this defines the level of abstraction.")
+parser.add_argument("--num_phosphenes", type=int, default=16,
+                    help="number of phosphenes used to generate the image, this defines the level of density.")
 parser.add_argument("--num_iter", type=int, default=2001,
                     help="number of iterations")
 parser.add_argument("--fix_scale", type=int, default=0,
@@ -39,19 +38,25 @@ parser.add_argument('--gpunum', type=int, default=0)
 
 args = parser.parse_args()
 
+args.target_file = "C:/Users/vanholk/sparsifier/target_images/camel.png"  # I added this because I dont know how to assign value to the target_file otherwise
+
 multiprocess = not args.colab and args.num_sketches > 1 and args.multiprocess
 
 abs_path = os.path.abspath(os.getcwd())
 
-target = f"{abs_path}/target_images/{args.target_file}"
-assert os.path.isfile(target), f"{target} does not exists!"
+target = os.path.join(abs_path, "target_images", args.target_file)
+assert os.path.isfile(target), f"{target} does not exist!"
+
+# target = f"{abs_path}/target_images/{args.target_file}" # These lines gave wrong formatting
+# assert os.path.isfile(target), f"{target} does not exist!"
 
 if not os.path.isfile(f"{abs_path}/U2Net_/saved_models/u2net.pth"):
     sp.run(["gdown", "https://drive.google.com/uc?id=1ao1ovG1Qtx4b7EoskHXmi2E9rp5CHLcZ",
-           "-O", "U2Net_/saved_models/"])
+            "-O", "U2Net_/saved_models/"])
 
 test_name = os.path.splitext(args.target_file)[0]
-output_dir = f"{abs_path}/output_sketches/{test_name}/"
+output_dir = os.path.join(abs_path, "output_sketches", test_name)
+# output_dir = f"{abs_path}/output_sketches/{test_name}/" #this line gave wrong formatting
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
@@ -83,19 +88,19 @@ losses_all = manager.dict()
 
 def run(seed, wandb_name):
     exit_code = sp.run(["python", "painterly_rendering.py", target,
-                            "--num_paths", str(args.num_strokes),
-                            "--output_dir", output_dir,
-                            "--wandb_name", wandb_name,
-                            "--num_iter", str(num_iter),
-                            "--save_interval", str(save_interval),
-                            "--seed", str(seed),
-                            "--use_gpu", str(int(use_gpu)),
-                            "--fix_scale", str(args.fix_scale),
-                            "--mask_object", str(args.mask_object),
-                            "--mask_object_attention", str(
-                                args.mask_object),
-                            "--display_logs", str(int(args.colab)),
-                            "--display", str(int(args.display))])
+                        "--num_phosphenes", str(args.num_phosphenes),
+                        "--output_dir", output_dir,
+                        "--wandb_name", wandb_name,
+                        "--num_iter", str(num_iter),
+                        "--save_interval", str(save_interval),
+                        "--seed", str(seed),
+                        "--use_gpu", str(int(use_gpu)),
+                        "--fix_scale", str(args.fix_scale),
+                        "--mask_object", str(args.mask_object),
+                        "--mask_object_attention", str(
+            args.mask_object),
+                        "--display_logs", str(int(args.colab)),
+                        "--display", str(int(args.display))])
     if exit_code.returncode:
         sys.exit(1)
 
@@ -104,8 +109,8 @@ def run(seed, wandb_name):
     loss_eval = np.array(config['loss_eval'])
     inds = np.argsort(loss_eval)
     losses_all[wandb_name] = loss_eval[inds][0]
- 
-    
+
+
 def display_(seed, wandb_name):
     path_to_svg = f"{output_dir}/{wandb_name}/svg_logs/"
     intervals_ = list(range(0, num_iter, save_interval))
@@ -115,7 +120,7 @@ def display_(seed, wandb_name):
     display(out)
     for i in intervals_:
         filename = f"svg_iter{i}.svg"
-        not_exist = True 
+        not_exist = True
         while not_exist:
             not_exist = not os.path.isfile(f"{path_to_svg}/{filename}")
             continue
@@ -123,18 +128,17 @@ def display_(seed, wandb_name):
             clear_output()
             print("")
             display(IntProgress(
-                        value=i,
-                        min=0,
-                        max=num_iter,
-                        description='Processing:',
-                        bar_style='info', # 'success', 'info', 'warning', 'danger' or ''
-                        style={'bar_color': 'maroon'},
-                        orientation='horizontal'
-                    ))
+                value=i,
+                min=0,
+                max=num_iter,
+                description='Processing:',
+                bar_style='info',  # 'success', 'info', 'warning', 'danger' or ''
+                style={'bar_color': 'maroon'},
+                orientation='horizontal'
+            ))
             display(SVG(f"{path_to_svg}/svg_iter{i}.svg"))
 
-    
-    
+
 if multiprocess:
     ncpus = 10
     P = mp.Pool(ncpus)  # Generate pool of workers
@@ -156,3 +160,4 @@ if multiprocess:
 sorted_final = dict(sorted(losses_all.items(), key=lambda item: item[1]))
 copyfile(f"{output_dir}/{list(sorted_final.keys())[0]}/best_iter.svg",
          f"{output_dir}/{list(sorted_final.keys())[0]}_best.svg")
+

@@ -3,7 +3,6 @@ import os
 import random
 
 import numpy as np
-import pydiffvg
 import torch
 import wandb
 
@@ -51,8 +50,8 @@ def parse_arguments():
                         help="training stages, you can train x strokes, then freeze them and train another x strokes etc.")
     parser.add_argument("--lr_scheduler", type=int, default=0)
     parser.add_argument("--lr", type=float, default=1.0)
-    parser.add_argument("--color_lr", type=float, default=0.01)
-    parser.add_argument("--color_vars_threshold", type=float, default=0.0)
+    #parser.add_argument("--color_lr", type=float, default=0.01)
+    #parser.add_argument("--color_vars_threshold", type=float, default=0.0)
     parser.add_argument("--batch_size", type=int, default=1,
                         help="for optimization it's only one image")
     parser.add_argument("--save_interval", type=int, default=10)
@@ -62,13 +61,13 @@ def parse_arguments():
     # =================================
     # ======== strokes params =========
     # =================================
-    parser.add_argument("--num_paths", type=int,
-                        default=16, help="number of strokes")
-    parser.add_argument("--width", type=float,
-                        default=1.5, help="stroke width")
-    parser.add_argument("--control_points_per_seg", type=int, default=4)
-    parser.add_argument("--num_segments", type=int, default=1,
-                        help="number of segments for each stroke, each stroke is a bezier curve with 4 control points")
+    parser.add_argument("--num_phosphenes", type=int,
+                        default=16, help="number of phosphenes") #TODO: num_phosphenes
+    #parser.add_argument("--width", type=float,
+    #                    default=1.5, help="stroke width")
+    #parser.add_argument("--control_points_per_seg", type=int, default=4)
+    #parser.add_argument("--num_segments", type=int, default=1,
+    #                    help="number of segments for each stroke, each stroke is a bezier curve with 4 control points")
     parser.add_argument("--attention_init", type=int, default=1,
                         help="if True, use the attention heads of Dino model to set the location of the initial strokes")
     parser.add_argument("--saliency_model", type=str, default="clip")
@@ -91,17 +90,17 @@ def parse_arguments():
     parser.add_argument("--include_target_in_aug", type=int, default=0)
     parser.add_argument("--augment_both", type=int, default=1,
                         help="if you want to apply the affine augmentation to both the sketch and image")
-    parser.add_argument("--augemntations", type=str, default="affine",
+    parser.add_argument("--augmentations", type=str, default="affine",
                         help="can be any combination of: 'affine_noise_eraserchunks_eraser_press'")
     parser.add_argument("--noise_thresh", type=float, default=0.5)
     parser.add_argument("--aug_scale_min", type=float, default=0.7)
-    parser.add_argument("--force_sparse", type=float, default=0,
-                        help="if True, use L1 regularization on stroke's opacity to encourage small number of strokes")
+    #parser.add_argument("--force_sparse", type=float, default=0,
+    #                   help="if True, use L1 regularization on stroke's opacity to encourage small number of strokes")
     parser.add_argument("--clip_conv_loss", type=float, default=1)
     parser.add_argument("--clip_conv_loss_type", type=str, default="L2")
     parser.add_argument("--clip_conv_layer_weights",
                         type=str, default="0,0,1.0,1.0,0")
-    parser.add_argument("--clip_model_name", type=str, default="RN101")
+    parser.add_argument("--clip_model_name", type=str, default="RN50")
     parser.add_argument("--clip_fc_loss_weight", type=float, default=0.1)
     parser.add_argument("--clip_text_guide", type=float, default=0)
     parser.add_argument("--text_target", type=str, default="none")
@@ -132,8 +131,8 @@ def parse_arguments():
             torch.cuda.is_available() and torch.cuda.device_count() > 0) else "cpu")
     else:
         args.device = torch.device("cpu")
-    pydiffvg.set_use_gpu(torch.cuda.is_available() and args.use_gpu)
-    pydiffvg.set_device(args.device)
+    pydiffvg.set_use_gpu(torch.cuda.is_available() and args.use_gpu) #TODO: edit this
+    pydiffvg.set_device(args.device) #TODO: edit this
     return args
 
 
