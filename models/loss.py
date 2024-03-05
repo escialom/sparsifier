@@ -402,13 +402,15 @@ class CLIPConvLoss(torch.nn.Module):
         """
         Parameters
         ----------
-        sketch: Torch Tensor [1, C, H, W]
+        sketch: Torch Tensor [1, H, W]
         target: Torch Tensor [1, C, H, W]
         """
         #         y = self.target_transform(target).to(self.args.device)
         conv_loss_dict = {}
-        x = sketch.to(self.device)
-        y = target.to(self.device)
+        y = target.to(self.device) #1, 3 H, W
+        x = sketch.to(self.device) #1, 3, H, W
+        # img_augs = self.normalize_transform(y)
+        # sketch_augs = self.normalize_transform(x)
         sketch_augs, img_augs = [self.normalize_transform(x)], [
             self.normalize_transform(y)]
         if mode == "train":

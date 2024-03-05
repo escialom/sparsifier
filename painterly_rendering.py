@@ -102,18 +102,18 @@ def main(args):
         optimizer.zero_grad_()
         sketches = renderer.get_image().to(args.device)
         losses_dict = loss_func(sketches, inputs.detach(
-        ), renderer.get_color_parameters(), renderer, counter, optimizer)
+        ), renderer, counter, optimizer)
         loss = sum(list(losses_dict.values()))
         loss.backward()
         optimizer.step_()
         if epoch % args.save_interval == 0:
             utils.plot_batch(inputs, sketches, f"{args.output_dir}/jpg_logs", counter,
                              use_wandb=args.use_wandb, title=f"iter{epoch}.jpg")
-            renderer.save_svg(
-                f"{args.output_dir}/svg_logs", f"svg_iter{epoch}")
+            renderer.save_png(
+                f"{args.output_dir}/png_logs", f"png_iter{epoch}")
         if epoch % args.eval_interval == 0:
             with torch.no_grad():
-                losses_dict_eval = loss_func(sketches, inputs,  # renderer.get_color_parameters(),
+                losses_dict_eval = loss_func(sketches, inputs,
                                              renderer.get_points_params(), counter, optimizer, mode="eval")
                 loss_eval = sum(list(losses_dict_eval.values()))
                 configs_to_save["loss_eval"].append(loss_eval.item())
@@ -137,7 +137,7 @@ def main(args):
                         terminate = False
                         utils.plot_batch(
                             inputs, sketches, args.output_dir, counter, use_wandb=args.use_wandb, title="best_iter.jpg")
-                        renderer.save_svg(args.output_dir, "best_iter")
+                        renderer.save_png(args.output_dir, "best_iter")
 
                 # if args.use_wandb:
                 #     wandb.run.summary["best_loss"] = best_loss

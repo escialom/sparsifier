@@ -13,6 +13,7 @@ from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
 from torchvision import transforms
 from torch import Tensor
+from torchvision.transforms import ToPILImage
 
 
 class Painter(torch.nn.Module):
@@ -95,6 +96,7 @@ class Painter(torch.nn.Module):
                 # stroke_color = torch.tensor([0.0, 0.0, 0.0, 1.0])
             point_locations = self.get_point_locations().squeeze(0)
             self.point_locations.append(point_locations)
+            self.point_locations = self.point_locations[0]
 
             # path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
             #                                     fill_color = None,
@@ -107,9 +109,12 @@ class Painter(torch.nn.Module):
         # img = img[:, :, :3]
         # Convert img from HW to NHW
         img = img.unsqueeze(0)
-        img = img.permute(0, 1, 2).to(self.device) # NHW -> NHW
+        img = img.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
+        img = img.permute(0, 1, 2, 3).to(self.device)  # NHW -> NHW
         # Convert tensor to numpy array
         img_np = img.squeeze().cpu().numpy()
+        # Transpose the dimensions from [C, H, W] to [H, W, C] for RGB image
+        img_np = img_np.transpose(1, 2, 0)
 
         # Plot the image
         imshow((img_np*255).astype(int), cmap='gray')
@@ -119,18 +124,15 @@ class Painter(torch.nn.Module):
 
         # Or save the image
         # img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
-        # img_pil.save('rendered_image.png')  # Save the image
+        # img_pil.save('camel_initialized_image.png')  # Save the image
         return img
         # utils.imwrite(img.cpu(), '{}/init.png'.format(args.output_dir), gamma=args.gamma, use_wandb=args.use_wandb, wandb_name="init")
 
     def get_image(self):
         img = self.render_warp()
-        opacity = img[:, :, 3:4]
-        img = opacity * img[:, :, :3] + torch.ones(img.shape[0], img.shape[1], 3, device = self.device) * (1 - opacity)
-        img = img[:, :, :3]
-        # Convert img from HWC to NCHW
         img = img.unsqueeze(0)
-        img = img.permute(0, 3, 1, 2).to(self.device) # NHWC -> NCHW
+        img = img.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
+        img = img.permute(0, 1, 2, 3).to(self.device)  # NHW -> NHW
         return img
 
     def get_point_locations(self) -> Tensor:
@@ -157,16 +159,17 @@ class Painter(torch.nn.Module):
 
         # Generate phosphene on the grid. Luminance values normalized between 0 and 1
         phosphene = torch.exp(-(x_grid ** 2 + y_grid ** 2) / (2 * self.args.phosphene_radius ** 2))
-        # phosphene /= phosphene.max()
+        phosphene /= phosphene.max()
 
         # Min-Max normalization to scale phosphene to [0, 1]
         min_val, max_val = phosphene.min(), phosphene.max()
         phosphene_scaled = (phosphene - min_val) / (max_val - min_val)
+        phosphene = phosphene_scaled
 
         # Gamma Correction with gamma < 1 to brighten the values
-        gamma = 0.5  # Random value
-        phosphene_corrected = phosphene_scaled ** gamma
-        phosphene = phosphene_corrected
+        # gamma = 0.5 # Random value
+        # phosphene_corrected = phosphene_scaled ** gamma
+        # phosphene = phosphene_corrected
 
         return phosphene.unsqueeze(0)
 
@@ -181,14 +184,15 @@ class Painter(torch.nn.Module):
     def _render(self) -> torch.Tensor:
         elements = self.generate_phosphene()
 
-        elem_xy_locations_pre = self.point_locations
-        elem_xy_locations: torch.Tensor = elem_xy_locations_pre[0]
+        elem_xy_locations = self.point_locations
+        # elem_xy_locations_pre = self.point_locations
+        # elem_xy_locations: torch.Tensor = elem_xy_locations_pre[0]
         canvas = self.canvas.clone()
         output_img = torch.zeros_like(canvas)
 
         # Compute the scaling factor
-        scale_x = canvas.shape[0] / elem_xy_locations.shape[0]
-        scale_y = canvas.shape[1] / elem_xy_locations.shape[1]
+        # scale_x = canvas.shape[0] / elem_xy_locations.shape[0]
+        # scale_y = canvas.shape[1] / elem_xy_locations.shape[1]
 
         for coord in elem_xy_locations:
             # Extract the actual x and y positions from each coordinate pair
@@ -238,6 +242,7 @@ class Painter(torch.nn.Module):
 
     def parameters(self):
         self.points_vars = []
+        self.point_locations = self.point_locations
         # points' location optimization
         for i, point in enumerate(self.point_locations):
             if self.optimize_flag[i]:
@@ -264,14 +269,17 @@ class Painter(torch.nn.Module):
     #     pydiffvg.save_svg('{}/{}.svg'.format(output_dir, name), self.canvas_width, self.canvas_height, self.shapes, self.shape_groups)
     #
 
-    def save_png(self, output_dir, name, img):
+    def save_png(self, output_dir, name):
         canvas_size = (self.canvas_width, self.canvas_height)
-        img = self._render()  # here it is a Tensor
+        # img = self._render()  # here it is a Tensor
+        #
+        # # Convert tensor to PIL Image
+        # img = transforms.ToPILImage(img)
+        img = self._render()
+        to_pil = ToPILImage()
+        img_pil = to_pil(img)
 
-        # Convert tensor to PIL Image
-        img = transforms.ToPILImage(img)
-
-        img.save('{}/{}.png'.format(output_dir, name), format='PNG', size=canvas_size)
+        img_pil.save('{}/{}.png'.format(output_dir, name), format='PNG', size=canvas_size)
 
     def dino_attn(self):
         patch_size = 8  # dino hyperparameter
