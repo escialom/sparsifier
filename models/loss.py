@@ -409,8 +409,7 @@ class CLIPConvLoss(torch.nn.Module):
         conv_loss_dict = {}
         y = target.to(self.device) #1, 3 H, W
         x = sketch.to(self.device) #1, 3, H, W
-        # img_augs = self.normalize_transform(y)
-        # sketch_augs = self.normalize_transform(x)
+
         sketch_augs, img_augs = [self.normalize_transform(x)], [
             self.normalize_transform(y)]
         if mode == "train":

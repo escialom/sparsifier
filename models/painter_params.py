@@ -51,6 +51,7 @@ class Painter(torch.nn.Module):
         self.path_svg = args.path_svg
         self.points_per_stage = self.num_phosphenes
         self.optimize_flag = []
+        self.output_dir = args.output_dir
 
         # attention related for strokes initialisation
         self.attention_init = args.attention_init
@@ -117,14 +118,14 @@ class Painter(torch.nn.Module):
         img_np = img_np.transpose(1, 2, 0)
 
         # Plot the image
-        imshow((img_np*255).astype(int), cmap='gray')
-        plt.axis('off')
-        plt.title('Initialized image')
-        plt.show()
+        # imshow((img_np*255).astype(int), cmap='gray')
+        # plt.axis('off')
+        # plt.title('Initialized image')
+        # plt.show()
 
         # Or save the image
-        # img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
-        # img_pil.save('camel_initialized_image.png')  # Save the image
+        img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
+        img_pil.save( f"{self.output_dir}/camel_initialized_image.png")  # Save the image
         return img
         # utils.imwrite(img.cpu(), '{}/init.png'.format(args.output_dir), gamma=args.gamma, use_wandb=args.use_wandb, wandb_name="init")
 
@@ -242,7 +243,6 @@ class Painter(torch.nn.Module):
 
     def parameters(self):
         self.points_vars = []
-        self.point_locations = self.point_locations
         # points' location optimization
         for i, point in enumerate(self.point_locations):
             if self.optimize_flag[i]:

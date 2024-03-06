@@ -23,10 +23,16 @@ def parse_arguments():
     # ============ general ============
     # =================================
     abs_path = os.path.abspath(os.getcwd())
+    target = f"{abs_path}/target_images/camel.png"  # These lines gave wrong formatting
+    assert os.path.isfile(target), f"{target} does not exist!"
+    test_name = os.path.splitext("camel.png")[0]
+    output_dir = f"{abs_path}/output_sketches/{test_name}/"  # this line gave wrong formatting
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     parser.add_argument("--target",default= f"{abs_path}/target_images/camel.png", help="target image path")
     parser.add_argument("--target_file", type=str, default="camel.png",
                         help="target image file, located in <target_images>")
-    parser.add_argument("--output_dir", type=str, default="output_sketches",
+    parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/",
                         help="directory to save the output images and loss")
     parser.add_argument("--path_svg", type=str, default="none",
                         help="if you want to load an svg file and train from it")
@@ -61,7 +67,7 @@ def parse_arguments():
     parser.add_argument("--num_sketches", type=int, default=3,
                         help="it is recommended to draw 3 sketches and automatically chose the best one")
     parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=1.0)
+    parser.add_argument("--lr", type=float, default=1.0) #default = 1.0
     #parser.add_argument("--color_lr", type=float, default=0.01)
     #parser.add_argument("--color_vars_threshold", type=float, default=0.0)
     parser.add_argument("--batch_size", type=int, default=1,

@@ -76,7 +76,8 @@ def main(args):
     optimizer = PainterOptimizer(args, renderer)
     counter = 0
     configs_to_save = {"loss_eval": []}
-    best_loss, best_fc_loss = 100, 100
+    best_loss = 100
+    best_fc_loss = 100
     best_iter, best_iter_fc = 0, 0
     min_delta = 1e-5
     terminate = False
@@ -102,9 +103,9 @@ def main(args):
         optimizer.zero_grad_()
         sketches = renderer.get_image().to(args.device)
         losses_dict = loss_func(sketches, inputs.detach(
-        ), renderer, counter, optimizer)
+        ), renderer.get_points_params(), counter, optimizer)
         loss = sum(list(losses_dict.values()))
-        loss.backward()
+        loss.backward() #check if this step is working
         optimizer.step_()
         if epoch % args.save_interval == 0:
             utils.plot_batch(inputs, sketches, f"{args.output_dir}/jpg_logs", counter,
@@ -132,7 +133,7 @@ def main(args):
                 cur_delta = loss_eval.item() - best_loss
                 if abs(cur_delta) > min_delta:
                     if cur_delta < 0:
-                        best_loss = loss_eval.item()
+                        best_loss = loss_eval.item() #why this step?
                         best_iter = epoch
                         terminate = False
                         utils.plot_batch(
@@ -167,10 +168,10 @@ def main(args):
 
         counter += 1
 
-    renderer.save_svg(args.output_dir, "final_svg")
-    path_svg = os.path.join(args.output_dir, "best_iter.svg")
-    utils.log_sketch_summary_final(
-        path_svg, args.use_wandb, args.device, best_iter, best_loss, "best total")
+    renderer.save_png(args.output_dir, "final_png")
+    path_png = os.path.join(args.output_dir, "best_iter.png")
+    # utils.log_sketch_summary_final(
+    #     path_png, args.use_wandb, args.device, best_iter, best_loss, "best total")
 
     return configs_to_save
 
