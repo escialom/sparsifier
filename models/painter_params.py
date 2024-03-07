@@ -241,13 +241,16 @@ class Painter(torch.nn.Module):
         img = self._render()
         return img
 
-    def parameters(self):
-        self.points_vars = []
+    def point_parameters(self):
+        # self.points_vars = []
         # points' location optimization
-        for i, point in enumerate(self.point_locations):
-            if self.optimize_flag[i]:
-                self.point_locations.requires_grad = True
-                self.points_vars.append(self.point_locations)
+        # for i, point in enumerate(self.point_locations):
+        #     if self.optimize_flag[i]:
+        #         self.point_locations[i].requires_grad = True
+        #         self.points_vars.append(self.point_locations[i])
+        self.points_vars = self.point_locations
+        self.points_vars.requires_grad = True
+
         return self.points_vars
 
     def get_points_params(self):
@@ -468,7 +471,7 @@ class PainterOptimizer:
         #self.optim_color = args.force_sparse
 
     def init_optimizers(self):
-        self.points_optim = torch.optim.Adam(self.renderer.parameters(), lr=self.points_lr)
+        self.points_optim = torch.optim.Adam(self.renderer.point_parameters(), lr=self.points_lr)
         #if self.optim_color:
          #   self.color_optim = torch.optim.Adam(self.renderer.set_color_parameters(), lr=self.color_lr)
 

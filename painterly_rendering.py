@@ -22,6 +22,7 @@ import sketch_utils as utils
 from models.loss import Loss
 from models.painter_params import Painter, PainterOptimizer
 from IPython.display import display, SVG
+from models.loss import CLIPConvLoss
 
 warnings.filterwarnings('ignore')
 warnings.simplefilter('ignore')
@@ -67,11 +68,16 @@ def get_target(args):
     return target_, mask
 
 
+def count_trainable_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 def main(args):
     loss_func = Loss(args)
     inputs, mask = get_target(args)
     utils.log_input(args.use_wandb, 0, inputs, args.output_dir)
     renderer = load_renderer(args, inputs, mask)
+    print(count_trainable_parameters(renderer))
 
     optimizer = PainterOptimizer(args, renderer)
     counter = 0

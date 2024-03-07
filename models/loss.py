@@ -402,12 +402,12 @@ class CLIPConvLoss(torch.nn.Module):
         """
         Parameters
         ----------
-        sketch: Torch Tensor [1, H, W]
+        sketch: Torch Tensor [1, C, H, W]
         target: Torch Tensor [1, C, H, W]
         """
         #         y = self.target_transform(target).to(self.args.device)
         conv_loss_dict = {}
-        y = target.to(self.device) #1, 3 H, W
+        y = target.to(self.device) #1, 3, H, W
         x = sketch.to(self.device) #1, 3, H, W
 
         sketch_augs, img_augs = [self.normalize_transform(x)], [
@@ -462,3 +462,8 @@ class CLIPConvLoss(torch.nn.Module):
         x4 = self.layer4(x3)
         y = self.att_pool2d(x4)
         return y, [x, x1, x2, x3, x4]
+
+
+
+
+
