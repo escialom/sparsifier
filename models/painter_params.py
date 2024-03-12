@@ -16,6 +16,45 @@ from torch import Tensor
 from torchvision.transforms import ToPILImage
 
 
+class PhospheneTransformerNet(nn.Module):
+    def __init__(self, size):
+        super(PhospheneTransformerNet, self).__init__()
+        self.size = size
+        self.localization = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=7),
+            nn.MaxPool2d(2, stride=2),
+            nn.ReLU(True),
+            nn.Conv2d(8, 10, kernel_size=5),
+            nn.MaxPool2d(2, stride=2),
+            nn.ReLU(True)
+        )
+
+        self.fc_loc = nn.Sequential(
+            nn.Linear(10 * 52 * 52, 128),  # Adjusted input dimension
+            nn.ReLU(True),
+            nn.Linear(128, 16 * 2)  # TODO: change this to a vector/matrix given to dynaphos
+        )
+
+        # Initialize the weights/bias with identity transformation
+        #self.fc_loc[2].weight.data.zero_()
+        #self.fc_loc[2].bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
+
+    def forward(self, x):
+        xs = self.localization(x)
+        # Ensure xs is correctly reshaped for the fully connected layers
+        # The reshaping depends on the output size of your localization layers
+        num_features = 10 * 52 * 52
+        xs = xs.view(-1, num_features)  # num_features needs to be calculated based on the STN design
+        theta = self.fc_loc(xs)
+        theta = theta.view(16, 2)
+        theta = (theta - theta.min()) / (theta.max() - theta.min())
+
+        ## Generate the grid
+        #grid = F.affine_grid(theta, x.size(), align_corners=False)
+        return theta
+
+
+
 class Painter(torch.nn.Module):
     def __init__(self, args,
                  num_phosphenes = 4,
@@ -59,6 +98,7 @@ class Painter(torch.nn.Module):
         self.saliency_model = args.saliency_model
         self.xdog_intersec = args.xdog_intersec
         self.mask_object = args.mask_object_attention
+        self.stn = PhospheneTransformerNet(size=self.canvas_width)
 
         self.text_target = args.text_target # for clip gradients
         self.saliency_clip_model = args.saliency_clip_model
@@ -70,6 +110,32 @@ class Painter(torch.nn.Module):
         self.points_counter = 0 # counts the number of calls to "get_path"
         self.epoch = 0
         self.final_epoch = args.num_iter - 1
+
+    def rescale_positions(self, hard_selection):
+        output_size = [1, 1, self.canvas_width, self.canvas_height]
+
+        # Create the upscaling grid
+        grid = self.create_upscaling_grid(output_size)
+
+        # Use grid_sample for differentiable upscaling
+        upscaled_selection = F.grid_sample(hard_selection.unsqueeze(0).unsqueeze(0), grid, mode='nearest',
+                                           align_corners=False)
+
+        return upscaled_selection.squeeze(0)
+
+    def create_upscaling_grid(self, output_size):
+        # Calculate scale factors for rows and columns
+        # scale_factor = hard_selection.shape[0] / output_size[1] # Assuming square input and output
+        scale_factor = 1.
+
+        # Create an affine transformation that scales up the image
+        # The translation components are set to 0 for no translation
+        theta = torch.tensor([[scale_factor, 0, 0], [0, scale_factor, 0]], dtype=torch.float).unsqueeze(0)
+
+        # Generate a grid for the transformation
+        grid = F.affine_grid(theta, size=output_size, align_corners=False)
+
+        return grid
 
     def init_image(self, stage=0):
         if stage > 0:
@@ -113,7 +179,7 @@ class Painter(torch.nn.Module):
         img = img.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
         img = img.permute(0, 1, 2, 3).to(self.device)  # NHW -> NHW
         # Convert tensor to numpy array
-        img_np = img.squeeze().cpu().numpy()
+        img_np = img.squeeze().cpu().detach().numpy()
         # Transpose the dimensions from [C, H, W] to [H, W, C] for RGB image
         img_np = img_np.transpose(1, 2, 0)
 
@@ -129,7 +195,7 @@ class Painter(torch.nn.Module):
         return img
         # utils.imwrite(img.cpu(), '{}/init.png'.format(args.output_dir), gamma=args.gamma, use_wandb=args.use_wandb, wandb_name="init")
 
-    def get_image(self):
+    def get_image(self, mock=None):
         img = self.render_warp()
         img = img.unsqueeze(0)
         img = img.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
@@ -183,46 +249,84 @@ class Painter(torch.nn.Module):
         return (pad_left, pad_right, pad_top, pad_bottom)
 
     def _render(self) -> torch.Tensor:
-        elements = self.generate_phosphene()
-
-        elem_xy_locations = self.point_locations
-        # elem_xy_locations_pre = self.point_locations
-        # elem_xy_locations: torch.Tensor = elem_xy_locations_pre[0]
-        canvas = self.canvas.clone()
-        output_img = torch.zeros_like(canvas)
-
-        # Compute the scaling factor
-        # scale_x = canvas.shape[0] / elem_xy_locations.shape[0]
-        # scale_y = canvas.shape[1] / elem_xy_locations.shape[1]
-
-        for coord in elem_xy_locations:
-            # Extract the actual x and y positions from each coordinate pair
-            x_pos, y_pos = int(coord[0]), int(coord[1])
-
-            padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
-            padded_element = F.pad(elements, padding)
-
-            blending_weight = 1 # Some arbitrary value now
-            # Apply weighted blending
-            output_img += blending_weight * padded_element[0]
-
-        # for x in range(elem_xy_locations.shape[0]):
-        #     for y in range(elem_xy_locations.shape[1]):
-        #         if elem_xy_locations[x, y] != 0:
-        #             # Calculate the scaled positions
-        #             # x_pos, y_pos = int(x * scale_x), int(y * scale_y)
-        #             x_pos, y_pos = int(x), int(y)
-        #             # pad the element to the canvas size
-        #             padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
-        #             padded_element = F.pad(elements, padding)
-        #             # blend the element locations to the output
-        #             blending_weight = torch.sigmoid(elem_xy_locations[x, y])
-        #             # Apply weighted blending
-        #             output_img += blending_weight * padded_element[0]
+        # TODO: replace with dynaphos somehow
+        # elements = self.generate_phosphene()
         #
-        return output_img
+        # elem_xy_locations = self.point_locations
+        # # elem_xy_locations_pre = self.point_locations
+        # # elem_xy_locations: torch.Tensor = elem_xy_locations_pre[0]
+        # canvas = self.canvas.clone()
+        # output_img = torch.zeros_like(canvas)
+        #
+        # # Compute the scaling factor
+        # # scale_x = canvas.shape[0] / elem_xy_locations.shape[0]
+        # # scale_y = canvas.shape[1] / elem_xy_locations.shape[1]
+        #
+        # for coord in elem_xy_locations:
+        #     # Extract the actual x and y positions from each coordinate pair
+        #     x_pos, y_pos = int(coord[0]), int(coord[1])
+        #
+        #     padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
+        #     padded_element = F.pad(elements, padding)
+        #
+        #     blending_weight = 1 # Some arbitrary value now
+        #     # Apply weighted blending
+        #     output_img += blending_weight * padded_element[0]
+        #
+        # # for x in range(elem_xy_locations.shape[0]):
+        # #     for y in range(elem_xy_locations.shape[1]):
+        # #         if elem_xy_locations[x, y] != 0:
+        # #             # Calculate the scaled positions
+        # #             # x_pos, y_pos = int(x * scale_x), int(y * scale_y)
+        # #             x_pos, y_pos = int(x), int(y)
+        # #             # pad the element to the canvas size
+        # #             padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
+        # #             padded_element = F.pad(elements, padding)
+        # #             # blend the element locations to the output
+        # #             blending_weight = torch.sigmoid(elem_xy_locations[x, y])
+        # #             # Apply weighted blending
+        # #             output_img += blending_weight * padded_element[0]
+        # #
+        # return output_img
 
+        elements = self.generate_phosphene()
+        canvas = self.canvas.clone()
+        positions = self.point_locations
+        # canvas: the canvas to draw on, [1, H, W]
+        # blobs: the pre-generated gaussian blobs, assumed to be [N, 1, H_b, W_b]
+        # positions: the normalized positions of the blobs, [(x1, y1), (x2, y2), ...]
 
+        H, W = canvas.shape
+        for blob, (x_norm, y_norm) in zip(elements, positions):
+            # Calculate the blob's center position in canvas coordinates
+            x_center = x_norm * W
+            y_center = y_norm * H
+
+            # Generate a soft mask for placement
+            # Create a meshgrid for the canvas
+            x_canvas = torch.linspace(0, W - 1, steps=W, device=canvas.device)
+            y_canvas = torch.linspace(0, H - 1, steps=H, device=canvas.device)
+            x_grid, y_grid = torch.meshgrid(x_canvas, y_canvas)
+
+            # Calculate distances from the center
+            distances = torch.sqrt((x_grid - x_center) ** 2 + (y_grid - y_center) ** 2)
+
+            # Create a soft mask based on distances
+            # Assuming blobs have a 'radius' that determines their effective area
+            sigma = self.args.phosphene_radius  # This sigma controls the spread of the blob influence
+            mask = torch.exp(-(distances ** 2) / (2 * sigma ** 2))
+
+            # Resize blob to match the canvas size if needed
+            blob_resized = F.interpolate(blob.unsqueeze(0).unsqueeze(0), size=(H, W), mode='bilinear', align_corners=False)
+            blob_resized = blob_resized.squeeze(0).squeeze(0)
+
+            # Apply the mask to the blob
+            #blob_weighted = blob_resized * mask
+
+            # Blend the weighted blob onto the canvas
+            canvas = canvas + blob_resized
+
+        return canvas
 
     def render_warp(self):
         # if self.opacity_optim:
@@ -370,7 +474,7 @@ class Painter(torch.nn.Module):
         attn_map = (self.attention_map - self.attention_map.min()) / (self.attention_map.max() - self.attention_map.min())
         if self.xdog_intersec:
             xdog = XDoG_()
-            im_xdog = xdog(self.image_input_attn_clip[0].permute(1,2,0).cpu().numpy(), k=10)
+            im_xdog = xdog(self.image_input_attn_clip[0].permute(1,2,0).cpu().detach().numpy(), k=10)
             intersec_map = (1 - im_xdog) * attn_map
             attn_map = intersec_map
 
@@ -378,12 +482,14 @@ class Painter(torch.nn.Module):
         attn_map_soft[attn_map > 0] = self.softmax(attn_map[attn_map > 0], tau=self.softmax_temp)
 
         k = self.num_stages * self.num_phosphenes
-        self.inds = np.random.choice(range(attn_map.flatten().shape[0]), size=k, replace=False, p=attn_map_soft.flatten())
-        self.inds = np.array(np.unravel_index(self.inds, attn_map.shape)).T
+        # TODO: change self.stn to output a grid for dynaphos (or whatever it takes, a vector etc.)
+        #other_inds = np.random.choice(range(attn_map.flatten().shape[0]), size=k, replace=False, p=attn_map_soft.flatten())
+        #other_inds = np.array(np.unravel_index(other_inds, attn_map.shape)).T
+        self.inds = self.stn(torch.Tensor(attn_map_soft).unsqueeze(0).unsqueeze(0))
 
         self.inds_normalised = np.zeros(self.inds.shape)
-        self.inds_normalised[:, 0] =  self.inds[:, 1] / self.canvas_width
-        self.inds_normalised[:, 1] =  self.inds[:, 0] / self.canvas_height
+        self.inds_normalised[:, 0] =  self.inds[:, 1].detach() / self.canvas_width
+        self.inds_normalised[:, 1] =  self.inds[:, 0].detach() / self.canvas_height
         self.inds_normalised = self.inds_normalised.tolist() #TODO do we want this? or do we like the tuple format that inds has
         return attn_map_soft
 
@@ -471,7 +577,7 @@ class PainterOptimizer:
         #self.optim_color = args.force_sparse
 
     def init_optimizers(self):
-        self.points_optim = torch.optim.Adam(self.renderer.point_parameters(), lr=self.points_lr)
+        self.points_optim = torch.optim.Adam([self.renderer.point_parameters()], lr=self.points_lr)
         #if self.optim_color:
          #   self.color_optim = torch.optim.Adam(self.renderer.set_color_parameters(), lr=self.color_lr)
 
