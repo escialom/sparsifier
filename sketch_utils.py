@@ -7,6 +7,7 @@ import pandas as pd
 import skimage
 import skimage.io
 import torch
+import yaml
 # import wandb
 import PIL
 from PIL import Image
@@ -307,3 +308,9 @@ def get_mask_u2net(args, pil_im):
     im_final = Image.fromarray(im_final)
 
     return im_final, predict
+
+
+def load_params(path: str) -> dict:
+    with open(path, 'r') as f:
+        params = yaml.load(f, Loader=yaml.FullLoader)
+    return params

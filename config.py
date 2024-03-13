@@ -83,7 +83,7 @@ def parse_arguments():
     # ======== phosphene params =========
     # =================================
     parser.add_argument("--num_phosphenes", type=int,
-                        default=16, help="number of phosphenes used to generate the image, this defines the level of density.") #TODO: num_phosphenes
+                        default=1000, help="number of phosphenes used to generate the image, this defines the level of density.") #TODO: num_phosphenes
     #parser.add_argument("--width", type=float,
     #                    default=1.5, help="stroke width")
     #parser.add_argument("--control_points_per_seg", type=int, default=4)

@@ -14,6 +14,15 @@ from skimage.filters import threshold_otsu
 from torchvision import transforms
 from torch import Tensor
 from torchvision.transforms import ToPILImage
+import dynaphos
+from dynaphos import utils
+from dynaphos import cortex_models
+from dynaphos.cortex_models import get_visual_field_coordinates_from_cortex_full, Map
+from dynaphos.image_processing import canny_processor, sobel_processor
+from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
+from dynaphos.utils import get_data_kwargs, to_numpy
+
+import cv2
 
 
 class PhospheneTransformerNet(nn.Module):
@@ -164,6 +173,7 @@ class Painter(torch.nn.Module):
             point_locations = self.get_point_locations().squeeze(0)
             self.point_locations.append(point_locations)
             self.point_locations = self.point_locations[0]
+            print(self.point_locations)
 
             # path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
             #                                     fill_color = None,
@@ -184,14 +194,14 @@ class Painter(torch.nn.Module):
         img_np = img_np.transpose(1, 2, 0)
 
         # Plot the image
-        # imshow((img_np*255).astype(int), cmap='gray')
-        # plt.axis('off')
-        # plt.title('Initialized image')
-        # plt.show()
+        imshow((img_np*255).astype(int), cmap='gray')
+        plt.axis('off')
+        plt.title('Initialized image')
+        plt.show()
 
         # Or save the image
-        img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
-        img_pil.save( f"{self.output_dir}/camel_initialized_image.png")  # Save the image
+        # img_pil = Image.fromarray((img_np * 255).astype('uint8'))  # Convert to PIL Image
+        # img_pil.save( f"{self.output_dir}/camel_initialized_image.png")  # Save the image
         return img
         # utils.imwrite(img.cpu(), '{}/init.png'.format(args.output_dir), gamma=args.gamma, use_wandb=args.use_wandb, wandb_name="init")
 
@@ -264,7 +274,7 @@ class Painter(torch.nn.Module):
         #
         # for coord in elem_xy_locations:
         #     # Extract the actual x and y positions from each coordinate pair
-        #     x_pos, y_pos = int(coord[0]), int(coord[1])
+        #     x_pos, y_pos = coord[0], coord[1]
         #
         #     padding = self.calculate_padding(x_pos, y_pos, elements, canvas)
         #     padded_element = F.pad(elements, padding)
@@ -289,44 +299,66 @@ class Painter(torch.nn.Module):
         # #
         # return output_img
 
-        elements = self.generate_phosphene()
-        canvas = self.canvas.clone()
-        positions = self.point_locations
-        # canvas: the canvas to draw on, [1, H, W]
-        # blobs: the pre-generated gaussian blobs, assumed to be [N, 1, H_b, W_b]
-        # positions: the normalized positions of the blobs, [(x1, y1), (x2, y2), ...]
+        #TODO so here we want to as output an image with phosphenes rendered through dynaphos
+        # So instead of elements = our phosphene generator, we want elements = dynaphos
 
-        H, W = canvas.shape
-        for blob, (x_norm, y_norm) in zip(elements, positions):
-            # Calculate the blob's center position in canvas coordinates
-            x_center = x_norm * W
-            y_center = y_norm * H
+        #
+        # Load the simulator configuration file
+        params = utils.load_params('C:/Users/vanholk/sparsifier/dynaphos/config/params.yaml') #TODO move this to our config file
+        params['run']['fps'] = 10  # 10 fps -> a single frame represents 100 milliseconds
 
-            # Generate a soft mask for placement
-            # Create a meshgrid for the canvas
-            x_canvas = torch.linspace(0, W - 1, steps=W, device=canvas.device)
-            y_canvas = torch.linspace(0, H - 1, steps=H, device=canvas.device)
-            x_grid, y_grid = torch.meshgrid(x_canvas, y_canvas)
+        n_phosphenes = self.num_phosphenes
 
-            # Calculate distances from the center
-            distances = torch.sqrt((x_grid - x_center) ** 2 + (y_grid - y_center) ** 2)
+        phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(params, n_phosphenes)
+        #TODO okay so, this initializes a grid with 1000 electrodes (n_phosphenes = 1000), but this grid needs to be the same every iteration
+        # so see if i can implement a seed that it it always the same, or another function in cortex_models
 
-            # Create a soft mask based on distances
-            # Assuming blobs have a 'radius' that determines their effective area
-            sigma = self.args.phosphene_radius  # This sigma controls the spread of the blob influence
-            mask = torch.exp(-(distances ** 2) / (2 * sigma ** 2))
+        simulator = PhospheneSimulator(params, phosphene_coords)
 
-            # Resize blob to match the canvas size if needed
-            blob_resized = F.interpolate(blob.unsqueeze(0).unsqueeze(0), size=(H, W), mode='bilinear', align_corners=False)
-            blob_resized = blob_resized.squeeze(0).squeeze(0)
+        print(self.attn_map_soft.shape)
+        # img_resized = cv2.resize(self.attn_map_soft, (256, 256))
+        # gray_attn = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
+        #
+        # print(gray_attn.shape)
 
-            # Apply the mask to the blob
-            #blob_weighted = blob_resized * mask
+        def normalized_rescaling(img, stimulus_scale=100.e-6):
+            """Normalize <img> and rescale the pixel intensities in the range [0, <stimulus_scale>].
+            The output image represents the stimulation intensity map.
+            param stimulus_scale: the stimulation amplitude corresponding to the highest-valued pixel.
+            return: image with rescaled pixel values (stimulation intensity map in Ampères)."""
+            img_norm = (img - img.min()) / (img.max() - img.min())
+            return img_norm * stimulus_scale
 
-            # Blend the weighted blob onto the canvas
-            canvas = canvas + blob_resized
+        attn_map_soft_rescaled = normalized_rescaling(self.attn_map_soft)
+        stim = simulator.sample_stimulus(attn_map_soft_rescaled)
 
-        return canvas
+        # stim = simulator.sample_stimulus(self.attn_map_soft, rescale=True) #stim contains values
+        print(stim.shape)
+
+        simulator.reset()
+        phosphenes = simulator(stim)
+
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))  # Adjust figsize as needed
+
+        # Plot self.attn_map_soft in the first subplot
+        axs[0].imshow(self.attn_map_soft, origin='upper', cmap='gray')
+        axs[0].axis('off')
+        axs[0].set_title('Attention Map')
+
+        # Plot phosphenes in the second subplot
+        axs[1].imshow(phosphenes, origin='upper', cmap='gray')
+        axs[1].axis('off')
+        axs[1].set_title('Dynaphos Image')
+
+        # Show the plot
+        plt.tight_layout()  # Adjust spacing between subplots
+        plt.show()
+
+        return phosphenes
+
+
+
+
 
     def render_warp(self):
         # if self.opacity_optim:
@@ -455,6 +487,10 @@ class Painter(torch.nn.Module):
         else:
             # attn_map = interpret(self.image_input_attn_clip, text_input, model, device=self.device, index=0).astype(np.float32)
             attn_map = interpret(self.image_input_attn_clip, text_input, model, device=self.device)
+            plt.imshow(attn_map, interpolation='nearest', vmin=0, vmax=1) #or self.attention_map
+            plt.title("atn map")
+            plt.axis("off")
+            plt.show()
 
         del model
         return attn_map
@@ -490,7 +526,21 @@ class Painter(torch.nn.Module):
         self.inds_normalised = np.zeros(self.inds.shape)
         self.inds_normalised[:, 0] =  self.inds[:, 1].detach() / self.canvas_width
         self.inds_normalised[:, 1] =  self.inds[:, 0].detach() / self.canvas_height
-        self.inds_normalised = self.inds_normalised.tolist() #TODO do we want this? or do we like the tuple format that inds has
+        self.inds_normalised = self.inds_normalised.tolist()
+
+        plt.imshow(attn_map_soft, interpolation='nearest')  # or self.attention_map
+        plt.title("atn map soft")
+        plt.axis("off")
+        plt.show()
+
+        plt.imshow(intersec_map)
+        plt.title("Intersection map")
+        plt.axis("off")
+        plt.show()
+
+        self.attn_map_soft = attn_map_soft
+
+
         return attn_map_soft
 
     def set_inds_dino(self):
