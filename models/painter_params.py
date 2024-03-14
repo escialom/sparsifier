@@ -329,21 +329,24 @@ class Painter(torch.nn.Module):
             img_norm = (img - img.min()) / (img.max() - img.min())
             return img_norm * stimulus_scale
 
+        intersec_map_rescaled = normalized_rescaling(self.intersec_map)
+        stim_xdog = simulator.sample_stimulus(intersec_map_rescaled)
+
         attn_map_soft_rescaled = normalized_rescaling(self.attn_map_soft)
-        stim = simulator.sample_stimulus(attn_map_soft_rescaled)
+        stim_attn = simulator.sample_stimulus(attn_map_soft_rescaled)
 
         # stim = simulator.sample_stimulus(self.attn_map_soft, rescale=True) #stim contains values
-        print(stim.shape)
+        print(stim_attn.shape)
 
         simulator.reset()
-        phosphenes = simulator(stim)
+        phosphenes = simulator(stim_xdog)
 
         fig, axs = plt.subplots(1, 2, figsize=(10, 5))  # Adjust figsize as needed
 
         # Plot self.attn_map_soft in the first subplot
-        axs[0].imshow(self.attn_map_soft, origin='upper', cmap='gray')
+        axs[0].imshow(self.intersec_map, origin='upper', cmap='gray')
         axs[0].axis('off')
-        axs[0].set_title('Attention Map')
+        axs[0].set_title('Intersec map, aka attention map but not normalized')
 
         # Plot phosphenes in the second subplot
         axs[1].imshow(phosphenes, origin='upper', cmap='gray')
@@ -487,10 +490,6 @@ class Painter(torch.nn.Module):
         else:
             # attn_map = interpret(self.image_input_attn_clip, text_input, model, device=self.device, index=0).astype(np.float32)
             attn_map = interpret(self.image_input_attn_clip, text_input, model, device=self.device)
-            plt.imshow(attn_map, interpolation='nearest', vmin=0, vmax=1) #or self.attention_map
-            plt.title("atn map")
-            plt.axis("off")
-            plt.show()
 
         del model
         return attn_map
@@ -508,14 +507,15 @@ class Painter(torch.nn.Module):
 
     def set_inds_clip(self):
         attn_map = (self.attention_map - self.attention_map.min()) / (self.attention_map.max() - self.attention_map.min())
+
         if self.xdog_intersec:
             xdog = XDoG_()
             im_xdog = xdog(self.image_input_attn_clip[0].permute(1,2,0).cpu().detach().numpy(), k=10)
             intersec_map = (1 - im_xdog) * attn_map
-            attn_map = intersec_map
-
-        attn_map_soft = np.copy(attn_map)
-        attn_map_soft[attn_map > 0] = self.softmax(attn_map[attn_map > 0], tau=self.softmax_temp)
+            self.intersec_map = intersec_map
+        attn_map_soft = np.copy(intersec_map)
+        attn_map_soft[intersec_map > 0] = self.softmax(intersec_map[intersec_map > 0], tau=self.softmax_temp)
+        self.attn_map_soft = attn_map_soft
 
         k = self.num_stages * self.num_phosphenes
         # TODO: change self.stn to output a grid for dynaphos (or whatever it takes, a vector etc.)
@@ -528,17 +528,21 @@ class Painter(torch.nn.Module):
         self.inds_normalised[:, 1] =  self.inds[:, 0].detach() / self.canvas_height
         self.inds_normalised = self.inds_normalised.tolist()
 
-        plt.imshow(attn_map_soft, interpolation='nearest')  # or self.attention_map
-        plt.title("atn map soft")
-        plt.axis("off")
-        plt.show()
+        fig, axs = plt.subplots(1, 3, figsize=(18, 6))
 
-        plt.imshow(intersec_map)
-        plt.title("Intersection map")
-        plt.axis("off")
-        plt.show()
+        axs[0].imshow(attn_map)
+        axs[0].set_title("Attention map")
+        axs[0].axis("off")
 
-        self.attn_map_soft = attn_map_soft
+        axs[1].imshow(intersec_map)
+        axs[1].set_title("Intersection map")
+        axs[1].axis("off")
+
+        axs[2].imshow(attn_map_soft)
+        axs[2].set_title("Normalized attention map (intersection map)")
+        axs[2].axis("off")
+
+        plt.show()
 
 
         return attn_map_soft
