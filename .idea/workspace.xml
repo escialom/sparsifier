@@ -6,8 +6,11 @@
   <component name="ChangeListManager">
     <list default="true" id="581c47d4-0c03-4a4d-8315-42e8d29b896a" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dynaphos/config/params.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/dynaphos/config/params.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dynaphos/simulator.py" beforeDir="false" afterPath="$PROJECT_DIR$/dynaphos/simulator.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/painter_params.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/painter_params.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/painterly_rendering.py" beforeDir="false" afterPath="$PROJECT_DIR$/painterly_rendering.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sketch_utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/sketch_utils.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -30,7 +33,7 @@
     "RunOnceActivity.OpenProjectViewOnStart": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "WebServerToolWindowFactoryState": "false",
-    "last_opened_file_path": "C:/Users/vanholk/dyphanos",
+    "last_opened_file_path": "C:/Users/vanholk/sparsifier",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -80,7 +83,8 @@
       <workItem from="1709297665861" duration="39000" />
       <workItem from="1709297706028" duration="12000" />
       <workItem from="1709297743394" duration="45422000" />
-      <workItem from="1710325801289" duration="15148000" />
+      <workItem from="1710325801289" duration="17085000" />
+      <workItem from="1710421283265" duration="6281000" />
     </task>
     <servers />
   </component>
@@ -91,24 +95,9 @@
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/models/painter_params.py</url>
-          <line>364</line>
-          <option name="timeStamp" value="102" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/models/painter_params.py</url>
-          <line>348</line>
-          <option name="timeStamp" value="106" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/models/loss.py</url>
-          <line>414</line>
-          <option name="timeStamp" value="109" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/models/painter_params.py</url>
-          <line>217</line>
-          <option name="timeStamp" value="110" />
+          <url>file://$PROJECT_DIR$/painterly_rendering.py</url>
+          <line>151</line>
+          <option name="timeStamp" value="128" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>
@@ -127,7 +116,7 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/sparsifier$run_object_sketching.coverage" NAME="run_object_sketching Coverage Results" MODIFIED="1709045753108" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/sparsifier$painterly_rendering.coverage" NAME="painterly_rendering Coverage Results" MODIFIED="1710409173766" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/sparsifier$painterly_rendering.coverage" NAME="painterly_rendering Coverage Results" MODIFIED="1710427482237" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$config.coverage" NAME="config Coverage Results" MODIFIED="1709044638475" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$loss.coverage" NAME="loss Coverage Results" MODIFIED="1709821976465" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/models" />
     <SUITE FILE_PATH="coverage/sparsifier$painter_params.coverage" NAME="painter_params Coverage Results" MODIFIED="1709815215047" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/models" />

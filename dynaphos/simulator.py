@@ -441,20 +441,6 @@ class GaussianSimulator:
 
     def sample_receptive_fields(self, x: torch.Tensor) -> torch.Tensor:
         """Extracts the maximum value of activation mask x within the 'receptive field' of each phosphene"""
-        print("Sampling mask shape:", self.sampling_mask.shape)
-        print("Activation mask shape:", x.shape)
-
-        # x = x.unsqueeze(0).unsqueeze(0)  # Shape becomes [1, 1, 224, 224]
-        #
-        # # Resize the activation mask to [256, 256]
-        # # You need to specify the target size as (256, 256)
-        # x_resized = F.interpolate(x, size=(256, 256), mode='bilinear', align_corners=False)
-        #
-        # # Remove the batch and channel dimensions to get back to a [256, 256] shape, if necessary
-        # x_resized = x_resized.squeeze(0).squeeze(0)
-        #
-        # print(x_resized.shape)
-
         return torch.amax(self.sampling_mask * x, dim=(-2,-1))
 
     @property

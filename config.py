@@ -98,6 +98,7 @@ def parse_arguments():
     parser.add_argument("--xdog_intersec", type=int, default=1)
     parser.add_argument("--mask_object_attention", type=int, default=0)
     parser.add_argument("--softmax_temp", type=float, default=0.3)
+    parser.add_argument("--constrain", type=int, default= 1)
 
     # =================================
     # ============= loss ==============

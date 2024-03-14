@@ -108,8 +108,13 @@ def main(args):
         start = time.time()
         optimizer.zero_grad_()
         sketches = renderer.get_image().to(args.device)
+
+        mask = sketches > 0
+        count= mask.sum()
+        print(count)
+
         losses_dict = loss_func(sketches, inputs.detach(
-        ), renderer.get_points_params(), counter, optimizer)
+        ), renderer.get_points_params(), counter, optimizer) #TODO change to renderer.phosphenes where requiresgrad = true, new function get_activation_map_params()
         loss = sum(list(losses_dict.values()))
         loss.backward() #check if this step is working
         optimizer.step_()

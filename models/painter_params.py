@@ -41,7 +41,7 @@ class PhospheneTransformerNet(nn.Module):
         self.fc_loc = nn.Sequential(
             nn.Linear(10 * 52 * 52, 128),  # Adjusted input dimension
             nn.ReLU(True),
-            nn.Linear(128, 16 * 2)  # TODO: change this to a vector/matrix given to dynaphos
+            nn.Linear(128, 224 * 224)  # TODO: change this to a vector/matrix given to dynaphos
         )
 
         # Initialize the weights/bias with identity transformation
@@ -55,7 +55,7 @@ class PhospheneTransformerNet(nn.Module):
         num_features = 10 * 52 * 52
         xs = xs.view(-1, num_features)  # num_features needs to be calculated based on the STN design
         theta = self.fc_loc(xs)
-        theta = theta.view(16, 2)
+        theta = theta.view(224, 224)
         theta = (theta - theta.min()) / (theta.max() - theta.min())
 
         ## Generate the grid
@@ -85,6 +85,7 @@ class Painter(torch.nn.Module):
         self.add_random_noise = "noise" in args.augmentations
         self.noise_thresh = args.noise_thresh
         self.softmax_temp = args.softmax_temp
+        self.constrain = args.constrain
 
         self.point_locations = []
         # self.shape_groups = []
@@ -107,7 +108,7 @@ class Painter(torch.nn.Module):
         self.saliency_model = args.saliency_model
         self.xdog_intersec = args.xdog_intersec
         self.mask_object = args.mask_object_attention
-        self.stn = PhospheneTransformerNet(size=self.canvas_width)
+        self.stn = PhospheneTransformerNet(size=self.canvas_width) #TODO change variable name to ptn
 
         self.text_target = args.text_target # for clip gradients
         self.saliency_clip_model = args.saliency_clip_model
@@ -261,7 +262,7 @@ class Painter(torch.nn.Module):
     def _render(self) -> torch.Tensor:
         # TODO: replace with dynaphos somehow
         # elements = self.generate_phosphene()
-        #
+        # #
         # elem_xy_locations = self.point_locations
         # # elem_xy_locations_pre = self.point_locations
         # # elem_xy_locations: torch.Tensor = elem_xy_locations_pre[0]
@@ -282,7 +283,7 @@ class Painter(torch.nn.Module):
         #     blending_weight = 1 # Some arbitrary value now
         #     # Apply weighted blending
         #     output_img += blending_weight * padded_element[0]
-        #
+
         # # for x in range(elem_xy_locations.shape[0]):
         # #     for y in range(elem_xy_locations.shape[1]):
         # #         if elem_xy_locations[x, y] != 0:
@@ -315,7 +316,6 @@ class Painter(torch.nn.Module):
 
         simulator = PhospheneSimulator(params, phosphene_coords)
 
-        print(self.attn_map_soft.shape)
         # img_resized = cv2.resize(self.attn_map_soft, (256, 256))
         # gray_attn = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
         #
@@ -336,26 +336,119 @@ class Painter(torch.nn.Module):
         stim_attn = simulator.sample_stimulus(attn_map_soft_rescaled)
 
         # stim = simulator.sample_stimulus(self.attn_map_soft, rescale=True) #stim contains values
-        print(stim_attn.shape)
 
         simulator.reset()
         phosphenes = simulator(stim_xdog)
 
-        fig, axs = plt.subplots(1, 2, figsize=(10, 5))  # Adjust figsize as needed
+        # def apply_current_constraint(phosphenes, percentage):
+        #     """
+        #     Apply a constraint on the total stimulation current based on a percentage of the original maximum current.
+        #
+        #     Params:
+        #     phosphenes: Tensor representing the stimulation intensity map (in Amperes).
+        #     percentage: The percentage of the original maximum total current to scale down to.
+        #
+        #     Returns:
+        #     Tensor with adjusted stimulation intensities if necessary.
+        #     """
+        #     # Calculate the maximum allowed total current based on the percentage
+        #     max_total_current = phosphenes.sum() * (percentage / 100.0)
+        #
+        #     total_current = phosphenes.sum()
+        #     if total_current > max_total_current:
+        #         # Scale down the phosphenes values to meet the maximum total current constraint
+        #         phosphenes = phosphenes * (max_total_current / total_current)
+        #     return phosphenes
+        #
+        # # Apply the constraints with different percentages
+        # percentages = [100, 80, 60, 40, 20]
+        # for percentage in percentages:
+        #     adjusted_phosphenes = apply_current_constraint(phosphenes.clone(), percentage)
+        #     print(f"Total current at {percentage}% allowed:", adjusted_phosphenes.sum().item(), "Amperes")
+        #
+        # # Apply the constraints to the stimulation maps
+        # if self.constrain:
+        #     phosphenes_100 = apply_current_constraint(phosphenes, percentage=100)
+        #     phosphenes_80 = apply_current_constraint(phosphenes, percentage=80)
+        #     phosphenes_60 = apply_current_constraint(phosphenes, percentage = 60)
+        #     phosphenes_40 = apply_current_constraint(phosphenes, percentage=40)
+        #     phosphenes_20 = apply_current_constraint(phosphenes, percentage=20)
+        #
+        # # Create a list for easier iteration
+        # phosphenes_list = [
+        #     (phosphenes_100, '100%'),
+        #     (phosphenes_80, '80%'),
+        #     (phosphenes_60, '60%'),
+        #     (phosphenes_40, '40%'),
+        #     (phosphenes_20, '20%')
+        # ]
+        #
+        # # Setup subplots
+        # fig, axs = plt.subplots(1, 5, figsize=(15, 3))  # Adjust figure size as needed
+        #
+        # for ax, (phosphene, percentage) in zip(axs, phosphenes_list):
+        #     im = ax.imshow(phosphene.cpu().numpy(), cmap='gray', vmin=0,
+        #                    vmax=1)  # Assuming phosphenes are on GPU; adjust as needed
+        #     ax.set_title(f'Sum: {phosphene.sum().item():.2f} ({percentage})')
+        #     ax.axis('off')
 
-        # Plot self.attn_map_soft in the first subplot
-        axs[0].imshow(self.intersec_map, origin='upper', cmap='gray')
-        axs[0].axis('off')
-        axs[0].set_title('Intersec map, aka attention map but not normalized')
-
-        # Plot phosphenes in the second subplot
-        axs[1].imshow(phosphenes, origin='upper', cmap='gray')
-        axs[1].axis('off')
-        axs[1].set_title('Dynaphos Image')
-
-        # Show the plot
-        plt.tight_layout()  # Adjust spacing between subplots
-        plt.show()
+#         plt.show()
+#
+#         def randomly_deactivate_phosphenes(phosphenes, max_total_current):
+#             """
+#             Randomly deactivates a selection of phosphenes to ensure the total current
+#             does not exceed the specified maximum value. This function turns off phosphenes
+#             completely without changing the intensity of the remaining ones.
+#
+#             Parameters:
+#             phosphenes (Tensor): The original phosphenes intensity map.
+#             max_total_current (float): The maximum allowed sum of intensities (total current).
+#
+#             Returns:
+#             Tensor: The adjusted phosphenes intensity map.
+#             """
+#             # Flatten the phosphenes for easier manipulation
+#             original_shape = phosphenes.shape
+#             phosphenes_flat = phosphenes.flatten()
+#
+#             # Keep reducing phosphenes until the total current is under the limit
+#             while phosphenes_flat.sum() > max_total_current:
+#                 # Find indices of currently active (non-zero) phosphenes
+#                 active_indices = torch.nonzero(phosphenes_flat, as_tuple=True)[0]
+#
+#                 # If no active phosphenes left but still over max_current, break to avoid infinite loop
+#                 if len(active_indices) == 0:
+#                     break
+#
+#                 # Randomly select one active phosphene to turn off
+#                 index_to_turn_off = np.random.choice(active_indices.cpu().numpy(), 1)
+#
+#                 # Turn off the selected phosphene
+#                 phosphenes_flat[index_to_turn_off] = 0
+#
+#             # Reshape back to the original phosphenes map
+#             adjusted_phosphenes = phosphenes_flat.reshape(original_shape)
+#
+#             return adjusted_phosphenes
+#
+#         percentages = [100, 80, 60, 40, 20]
+#         original_phosphenes_sum = phosphenes.sum().item()  # Assuming phosphenes is already defined
+#
+#         fig, axs = plt.subplots(1, len(percentages), figsize=(20, 4))
+#
+#         for i, percentage in enumerate(percentages):
+#             max_total_current = original_phosphenes_sum * (percentage / 100.0)
+#             adjusted_phosphenes = randomly_deactivate_phosphenes(phosphenes.clone(), max_total_current)
+#             total_current_after_adjustment = adjusted_phosphenes.sum().item()
+#
+#             axs[i].imshow(adjusted_phosphenes.cpu().numpy(), cmap='gray')
+#             axs[i].set_title(f"{percentage}%\nSum: {total_current_after_adjustment:.2f}")
+#             axs[i].axis('off')
+#
+#         plt.show()
+# #TODO find a way where the dimmest turn off first. or like randomly distributing the active phosphenes based on activation map
+#
+#         phosphenes = phosphenes
 
         return phosphenes
 
@@ -610,6 +703,7 @@ class Painter(torch.nn.Module):
         return self.thresh
 
     def get_inds(self):
+
         return self.inds
 
     def get_mask(self):
