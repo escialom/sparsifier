@@ -67,7 +67,7 @@ def parse_arguments():
     parser.add_argument("--num_sketches", type=int, default=3,
                         help="it is recommended to draw 3 sketches and automatically chose the best one")
     parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=1.0) #default = 1.0
+    parser.add_argument("--lr", type=float, default=0.05) #default = 1.0
     #parser.add_argument("--color_lr", type=float, default=0.01)
     #parser.add_argument("--color_vars_threshold", type=float, default=0.0)
     parser.add_argument("--batch_size", type=int, default=1,

@@ -94,6 +94,8 @@ class Painter(torch.nn.Module):
         self.canvas_width, self.canvas_height = imsize, imsize
         self.patch_size = args.patch_size
         self.points_vars = []
+        self.activation_mask = []
+        self.phos_activation_mask = []
         # self.color_vars = []
         # self.color_vars_threshold = args.color_vars_threshold
 
@@ -108,7 +110,7 @@ class Painter(torch.nn.Module):
         self.saliency_model = args.saliency_model
         self.xdog_intersec = args.xdog_intersec
         self.mask_object = args.mask_object_attention
-        self.stn = PhospheneTransformerNet(size=self.canvas_width) #TODO change variable name to ptn
+        self.stn = PhospheneTransformerNet(size=self.canvas_width)
 
         self.text_target = args.text_target # for clip gradients
         self.saliency_clip_model = args.saliency_clip_model
@@ -117,7 +119,7 @@ class Painter(torch.nn.Module):
         self.attention_map = self.set_attention_map() if self.attention_init else None
 
         self.thresh = self.set_attention_threshold_map() if self.attention_init else None
-        self.points_counter = 0 # counts the number of calls to "get_path"
+        self.points_counter = 0 # counts the number of calls to "get_phosphenes"
         self.epoch = 0
         self.final_epoch = args.num_iter - 1
 
@@ -171,16 +173,17 @@ class Painter(torch.nn.Module):
                 num_phosphenes_exists = len(self.point_locations)
 
                 # stroke_color = torch.tensor([0.0, 0.0, 0.0, 1.0])
-            point_locations = self.get_point_locations().squeeze(0)
-            self.point_locations.append(point_locations)
-            self.point_locations = self.point_locations[0]
-            print(self.point_locations)
-
-            # path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
-            #                                     fill_color = None,
-            #                                     stroke_color = stroke_color)
-            # self.shape_groups.append(path_group)
-            self.optimize_flag = [True for i in range(len(self.point_locations))]
+            # point_locations = self.get_point_locations().squeeze(0)
+            # self.point_locations.append(point_locations)
+            # self.point_locations = self.point_locations[0]
+            # print(self.point_locations)
+            #
+            #
+            # # path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
+            # #                                     fill_color = None,
+            # #                                     stroke_color = stroke_color)
+            # # self.shape_groups.append(path_group)
+            # self.optimize_flag = [True for i in range(len(self.point_locations))] #TODO change this to make it work
 
         img = self.render_warp()
         # img = img[:, :, 3:4] * img[:, :, :3] + torch.ones(img.shape[0], img.shape[1], 3, device = self.device) * (1 - img[:, :, 3:4])
@@ -213,51 +216,51 @@ class Painter(torch.nn.Module):
         img = img.permute(0, 1, 2, 3).to(self.device)  # NHW -> NHW
         return img
 
-    def get_point_locations(self) -> Tensor:
-        point_locations = []
+    # def get_point_locations(self) -> Tensor:
+    #     point_locations = []
+    #
+    #     #self.num_control_points = torch.zeros(self.num_segments, dtype=torch.int32) + (self.control_points_per_seg - 2)
+    #     phosphene_centers = self.inds_normalised if self.attention_init else (random.random(), random.random())
+    #     point_locations.append(phosphene_centers)
+    #
+    #     point_locations = torch.tensor(point_locations).to(self.device)
+    #     point_locations = point_locations.squeeze()
+    #
+    #     point_locations[:, 0] *= self.canvas_width
+    #     point_locations[:, 1] *= self.canvas_height
+    #
+    #     return point_locations
 
-        #self.num_control_points = torch.zeros(self.num_segments, dtype=torch.int32) + (self.control_points_per_seg - 2)
-        phosphene_centers = self.inds_normalised if self.attention_init else (random.random(), random.random())
-        point_locations.append(phosphene_centers)
+    # def generate_phosphene(self) -> Tensor:
+    #     """Generates a phosphene with a given radius on a patch."""
+    #     # Define grid of phosphene
+    #     half_patch = int(self.patch_size // 2)
+    #     x = torch.arange(start=-half_patch, end=half_patch + 1)
+    #     x_grid, y_grid = torch.meshgrid([x, x])
+    #
+    #     # Generate phosphene on the grid. Luminance values normalized between 0 and 1
+    #     phosphene = torch.exp(-(x_grid ** 2 + y_grid ** 2) / (2 * self.args.phosphene_radius ** 2))
+    #     phosphene /= phosphene.max()
+    #
+    #     # Min-Max normalization to scale phosphene to [0, 1]
+    #     min_val, max_val = phosphene.min(), phosphene.max()
+    #     phosphene_scaled = (phosphene - min_val) / (max_val - min_val)
+    #     phosphene = phosphene_scaled
+    #
+    #     # Gamma Correction with gamma < 1 to brighten the values
+    #     # gamma = 0.5 # Random value
+    #     # phosphene_corrected = phosphene_scaled ** gamma
+    #     # phosphene = phosphene_corrected
+    #
+    #     return phosphene.unsqueeze(0)
 
-        point_locations = torch.tensor(point_locations).to(self.device)
-        point_locations = point_locations.squeeze()
-
-        point_locations[:, 0] *= self.canvas_width
-        point_locations[:, 1] *= self.canvas_height
-
-        return point_locations
-
-    def generate_phosphene(self) -> Tensor:
-        """Generates a phosphene with a given radius on a patch."""
-        # Define grid of phosphene
-        half_patch = int(self.patch_size // 2)
-        x = torch.arange(start=-half_patch, end=half_patch + 1)
-        x_grid, y_grid = torch.meshgrid([x, x])
-
-        # Generate phosphene on the grid. Luminance values normalized between 0 and 1
-        phosphene = torch.exp(-(x_grid ** 2 + y_grid ** 2) / (2 * self.args.phosphene_radius ** 2))
-        phosphene /= phosphene.max()
-
-        # Min-Max normalization to scale phosphene to [0, 1]
-        min_val, max_val = phosphene.min(), phosphene.max()
-        phosphene_scaled = (phosphene - min_val) / (max_val - min_val)
-        phosphene = phosphene_scaled
-
-        # Gamma Correction with gamma < 1 to brighten the values
-        # gamma = 0.5 # Random value
-        # phosphene_corrected = phosphene_scaled ** gamma
-        # phosphene = phosphene_corrected
-
-        return phosphene.unsqueeze(0)
-
-    @staticmethod
-    def calculate_padding(x_pos: int, y_pos: int, smoothed_element: Tensor, canvas: Tensor):
-        pad_top = max(y_pos - smoothed_element.shape[2] // 2, 0)
-        pad_left = max(x_pos - smoothed_element.shape[1] // 2, 0)
-        pad_bottom = max(canvas.shape[1] - pad_top - smoothed_element.shape[2], 0)
-        pad_right = max(canvas.shape[0] - pad_left - smoothed_element.shape[1], 0)
-        return (pad_left, pad_right, pad_top, pad_bottom)
+    # @staticmethod
+    # def calculate_padding(x_pos: int, y_pos: int, smoothed_element: Tensor, canvas: Tensor):
+    #     pad_top = max(y_pos - smoothed_element.shape[2] // 2, 0)
+    #     pad_left = max(x_pos - smoothed_element.shape[1] // 2, 0)
+    #     pad_bottom = max(canvas.shape[1] - pad_top - smoothed_element.shape[2], 0)
+    #     pad_right = max(canvas.shape[0] - pad_left - smoothed_element.shape[1], 0)
+    #     return (pad_left, pad_right, pad_top, pad_bottom)
 
     def _render(self) -> torch.Tensor:
         # TODO: replace with dynaphos somehow
@@ -300,9 +303,6 @@ class Painter(torch.nn.Module):
         # #
         # return output_img
 
-        #TODO so here we want to as output an image with phosphenes rendered through dynaphos
-        # So instead of elements = our phosphene generator, we want elements = dynaphos
-
         #
         # Load the simulator configuration file
         params = utils.load_params('C:/Users/vanholk/sparsifier/dynaphos/config/params.yaml') #TODO move this to our config file
@@ -311,15 +311,8 @@ class Painter(torch.nn.Module):
         n_phosphenes = self.num_phosphenes
 
         phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(params, n_phosphenes)
-        #TODO okay so, this initializes a grid with 1000 electrodes (n_phosphenes = 1000), but this grid needs to be the same every iteration
-        # so see if i can implement a seed that it it always the same, or another function in cortex_models
 
         simulator = PhospheneSimulator(params, phosphene_coords)
-
-        # img_resized = cv2.resize(self.attn_map_soft, (256, 256))
-        # gray_attn = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
-        #
-        # print(gray_attn.shape)
 
         def normalized_rescaling(img, stimulus_scale=100.e-6):
             """Normalize <img> and rescale the pixel intensities in the range [0, <stimulus_scale>].
@@ -329,6 +322,8 @@ class Painter(torch.nn.Module):
             img_norm = (img - img.min()) / (img.max() - img.min())
             return img_norm * stimulus_scale
 
+        # TODO essential step.
+        # Now I did it for two variants, the intersec map and softmax attn map just for illustration
         intersec_map_rescaled = normalized_rescaling(self.intersec_map)
         stim_xdog = simulator.sample_stimulus(intersec_map_rescaled)
 
@@ -338,123 +333,62 @@ class Painter(torch.nn.Module):
         # stim = simulator.sample_stimulus(self.attn_map_soft, rescale=True) #stim contains values
 
         simulator.reset()
-        phosphenes = simulator(stim_xdog)
+        phosphenes = simulator(stim_attn)
 
-        # def apply_current_constraint(phosphenes, percentage):
-        #     """
-        #     Apply a constraint on the total stimulation current based on a percentage of the original maximum current.
-        #
-        #     Params:
-        #     phosphenes: Tensor representing the stimulation intensity map (in Amperes).
-        #     percentage: The percentage of the original maximum total current to scale down to.
-        #
-        #     Returns:
-        #     Tensor with adjusted stimulation intensities if necessary.
-        #     """
-        #     # Calculate the maximum allowed total current based on the percentage
-        #     max_total_current = phosphenes.sum() * (percentage / 100.0)
-        #
-        #     total_current = phosphenes.sum()
-        #     if total_current > max_total_current:
-        #         # Scale down the phosphenes values to meet the maximum total current constraint
-        #         phosphenes = phosphenes * (max_total_current / total_current)
-        #     return phosphenes
-        #
-        # # Apply the constraints with different percentages
-        # percentages = [100, 80, 60, 40, 20]
-        # for percentage in percentages:
-        #     adjusted_phosphenes = apply_current_constraint(phosphenes.clone(), percentage)
-        #     print(f"Total current at {percentage}% allowed:", adjusted_phosphenes.sum().item(), "Amperes")
-        #
-        # # Apply the constraints to the stimulation maps
-        # if self.constrain:
-        #     phosphenes_100 = apply_current_constraint(phosphenes, percentage=100)
-        #     phosphenes_80 = apply_current_constraint(phosphenes, percentage=80)
-        #     phosphenes_60 = apply_current_constraint(phosphenes, percentage = 60)
-        #     phosphenes_40 = apply_current_constraint(phosphenes, percentage=40)
-        #     phosphenes_20 = apply_current_constraint(phosphenes, percentage=20)
-        #
-        # # Create a list for easier iteration
-        # phosphenes_list = [
-        #     (phosphenes_100, '100%'),
-        #     (phosphenes_80, '80%'),
-        #     (phosphenes_60, '60%'),
-        #     (phosphenes_40, '40%'),
-        #     (phosphenes_20, '20%')
-        # ]
-        #
-        # # Setup subplots
-        # fig, axs = plt.subplots(1, 5, figsize=(15, 3))  # Adjust figure size as needed
-        #
-        # for ax, (phosphene, percentage) in zip(axs, phosphenes_list):
-        #     im = ax.imshow(phosphene.cpu().numpy(), cmap='gray', vmin=0,
-        #                    vmax=1)  # Assuming phosphenes are on GPU; adjust as needed
-        #     ax.set_title(f'Sum: {phosphene.sum().item():.2f} ({percentage})')
-        #     ax.axis('off')
+        def randomly_deactivate_phosphenes(phosphenes, max_total_current):
+            """
+            Randomly deactivates a selection of phosphenes to ensure the total current
+            does not exceed the specified maximum value. This function turns off phosphenes
+            completely without changing the intensity of the remaining ones.
 
-#         plt.show()
-#
-#         def randomly_deactivate_phosphenes(phosphenes, max_total_current):
-#             """
-#             Randomly deactivates a selection of phosphenes to ensure the total current
-#             does not exceed the specified maximum value. This function turns off phosphenes
-#             completely without changing the intensity of the remaining ones.
-#
-#             Parameters:
-#             phosphenes (Tensor): The original phosphenes intensity map.
-#             max_total_current (float): The maximum allowed sum of intensities (total current).
-#
-#             Returns:
-#             Tensor: The adjusted phosphenes intensity map.
-#             """
-#             # Flatten the phosphenes for easier manipulation
-#             original_shape = phosphenes.shape
-#             phosphenes_flat = phosphenes.flatten()
-#
-#             # Keep reducing phosphenes until the total current is under the limit
-#             while phosphenes_flat.sum() > max_total_current:
-#                 # Find indices of currently active (non-zero) phosphenes
-#                 active_indices = torch.nonzero(phosphenes_flat, as_tuple=True)[0]
-#
-#                 # If no active phosphenes left but still over max_current, break to avoid infinite loop
-#                 if len(active_indices) == 0:
-#                     break
-#
-#                 # Randomly select one active phosphene to turn off
-#                 index_to_turn_off = np.random.choice(active_indices.cpu().numpy(), 1)
-#
-#                 # Turn off the selected phosphene
-#                 phosphenes_flat[index_to_turn_off] = 0
-#
-#             # Reshape back to the original phosphenes map
-#             adjusted_phosphenes = phosphenes_flat.reshape(original_shape)
-#
-#             return adjusted_phosphenes
-#
-#         percentages = [100, 80, 60, 40, 20]
-#         original_phosphenes_sum = phosphenes.sum().item()  # Assuming phosphenes is already defined
-#
-#         fig, axs = plt.subplots(1, len(percentages), figsize=(20, 4))
-#
-#         for i, percentage in enumerate(percentages):
-#             max_total_current = original_phosphenes_sum * (percentage / 100.0)
-#             adjusted_phosphenes = randomly_deactivate_phosphenes(phosphenes.clone(), max_total_current)
-#             total_current_after_adjustment = adjusted_phosphenes.sum().item()
-#
-#             axs[i].imshow(adjusted_phosphenes.cpu().numpy(), cmap='gray')
-#             axs[i].set_title(f"{percentage}%\nSum: {total_current_after_adjustment:.2f}")
-#             axs[i].axis('off')
-#
-#         plt.show()
-# #TODO find a way where the dimmest turn off first. or like randomly distributing the active phosphenes based on activation map
-#
-#         phosphenes = phosphenes
+            Parameters:
+            phosphenes (Tensor): The original phosphenes activation map.
+            max_total_current (float): The maximum allowed sum of intensities over the electrode grid (total current).
+
+            Returns:
+            Tensor: The adjusted phosphenes intensity map.
+            """
+            # Flatten the phosphenes for easier manipulation
+            original_shape = phosphenes.shape
+            phosphenes_flat = phosphenes.flatten()
+
+            # Keep reducing phosphenes until the total current is under the limit
+            while phosphenes_flat.sum() > max_total_current:
+                # Find indices of currently active (non-zero) phosphenes
+                active_indices = torch.nonzero(phosphenes_flat, as_tuple=True)[0]
+
+                # If no active phosphenes left but still over max_current, break to avoid infinite loop
+                if len(active_indices) == 0:
+                    break
+
+                # Randomly select one active phosphene to turn off
+                index_to_turn_off = np.random.choice(active_indices.cpu().numpy(), 1)
+
+                # Turn off the selected phosphene
+                phosphenes_flat[index_to_turn_off] = 0
+
+            # Reshape back to the original phosphenes map
+            adjusted_phosphenes = phosphenes_flat.reshape(original_shape)
+
+            return adjusted_phosphenes
+
+        PERCENTAGE = 100 # Desired percentage of phosphenes to be kept
+        original_phosphenes_sum = phosphenes.sum().item()
+
+        max_total_current = original_phosphenes_sum * (PERCENTAGE/100.0)
+        adjusted_phosphenes = randomly_deactivate_phosphenes(phosphenes.clone(), max_total_current)
+        total_current_after_adjustment =  adjusted_phosphenes.sum().item()
+
+        plt.imshow(adjusted_phosphenes.cpu().numpy(), cmap='gray')
+        plt.title(f"{PERCENTAGE}%\nSum: {total_current_after_adjustment:.2f}")
+        plt.axis("off")
+        plt.show()
+
+        #TODO find a way where the dimmest turn off first. or like randomly distributing the active phosphenes based on activation map
+
+        phosphenes = adjusted_phosphenes
 
         return phosphenes
-
-
-
-
 
     def render_warp(self):
         # if self.opacity_optim:
@@ -472,21 +406,31 @@ class Painter(torch.nn.Module):
 
         img = self._render()
         return img
+    #
+    # def point_parameters(self):
+    #     # self.points_vars = []
+    #     # points' location optimization
+    #     # for i, point in enumerate(self.point_locations):
+    #     #     if self.optimize_flag[i]:
+    #     #         self.point_locations[i].requires_grad = True
+    #     #         self.points_vars.append(self.point_locations[i])
+    #     self.points_vars = self.point_locations
+    #     self.points_vars.requires_grad = True
+    #
+    #     return self.points_vars
+    #
+    # def get_points_params(self):
+    #     return self.points_vars
 
-    def point_parameters(self):
-        # self.points_vars = []
-        # points' location optimization
-        # for i, point in enumerate(self.point_locations):
-        #     if self.optimize_flag[i]:
-        #         self.point_locations[i].requires_grad = True
-        #         self.points_vars.append(self.point_locations[i])
-        self.points_vars = self.point_locations
-        self.points_vars.requires_grad = True
+    def activation_mask_parameters(self):
+        self.activation_mask = self.inds
+        activation_mask_detached = self.activation_mask.detach().clone()
+        activation_mask_detached.requires_grad = True
+        self.activation_mask = activation_mask_detached
+        return self.activation_mask
 
-        return self.points_vars
-
-    def get_points_params(self):
-        return self.points_vars
+    def get_activation_mask_params(self):
+        return self.activation_mask
 
     # def set_color_parameters(self):
     #     # for storkes' color optimization (opacity)
@@ -605,9 +549,10 @@ class Painter(torch.nn.Module):
             xdog = XDoG_()
             im_xdog = xdog(self.image_input_attn_clip[0].permute(1,2,0).cpu().detach().numpy(), k=10)
             intersec_map = (1 - im_xdog) * attn_map
-            self.intersec_map = intersec_map
+
         attn_map_soft = np.copy(intersec_map)
         attn_map_soft[intersec_map > 0] = self.softmax(intersec_map[intersec_map > 0], tau=self.softmax_temp)
+        self.intersec_map = intersec_map
         self.attn_map_soft = attn_map_soft
 
         k = self.num_stages * self.num_phosphenes
@@ -615,11 +560,16 @@ class Painter(torch.nn.Module):
         #other_inds = np.random.choice(range(attn_map.flatten().shape[0]), size=k, replace=False, p=attn_map_soft.flatten())
         #other_inds = np.array(np.unravel_index(other_inds, attn_map.shape)).T
         self.inds = self.stn(torch.Tensor(attn_map_soft).unsqueeze(0).unsqueeze(0))
+        plt.imshow(self.inds.detach().numpy(),cmap='gray')
+        plt.show()
 
         self.inds_normalised = np.zeros(self.inds.shape)
         self.inds_normalised[:, 0] =  self.inds[:, 1].detach() / self.canvas_width
         self.inds_normalised[:, 1] =  self.inds[:, 0].detach() / self.canvas_height
         self.inds_normalised = self.inds_normalised.tolist()
+
+        plt.imshow(self.inds_normalised, cmap='gray')
+        plt.show()
 
         fig, axs = plt.subplots(1, 3, figsize=(18, 6))
 
@@ -703,7 +653,7 @@ class Painter(torch.nn.Module):
         return self.thresh
 
     def get_inds(self):
-
+        #TODO make it scale to canvas size, now they are all between 0 and 1.
         return self.inds
 
     def get_mask(self):
@@ -725,7 +675,7 @@ class PainterOptimizer:
         #self.optim_color = args.force_sparse
 
     def init_optimizers(self):
-        self.points_optim = torch.optim.Adam([self.renderer.point_parameters()], lr=self.points_lr)
+        self.points_optim = torch.optim.Adam([self.renderer.activation_mask_parameters()], lr=self.points_lr)
         #if self.optim_color:
          #   self.color_optim = torch.optim.Adam(self.renderer.set_color_parameters(), lr=self.color_lr)
 
