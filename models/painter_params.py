@@ -39,9 +39,9 @@ class PhospheneTransformerNet(nn.Module):
         )
 
         self.fc_loc = nn.Sequential(
-            nn.Linear(10 * 52 * 52, 128),  # Adjusted input dimension
+            nn.Linear(10 * 52 * 52, 1024),  # Adjusted input dimension
             nn.ReLU(True),
-            nn.Linear(128, 224 * 224)  # TODO: change this to a vector/matrix given to dynaphos
+            nn.Linear(1024, 224 * 224)  # TODO: change this to a vector/matrix given to dynaphos
         )
 
         # Initialize the weights/bias with identity transformation
@@ -324,16 +324,20 @@ class Painter(torch.nn.Module):
 
         # TODO essential step.
         # Now I did it for two variants, the intersec map and softmax attn map just for illustration
-        intersec_map_rescaled = normalized_rescaling(self.intersec_map)
-        stim_xdog = simulator.sample_stimulus(intersec_map_rescaled)
+        # intersec_map_rescaled = normalized_rescaling(self.intersec_map)
+        # stim_xdog = simulator.sample_stimulus(intersec_map_rescaled)
 
-        attn_map_soft_rescaled = normalized_rescaling(self.attn_map_soft)
-        stim_attn = simulator.sample_stimulus(attn_map_soft_rescaled)
+        inds_normalised_rescaled = normalized_rescaling(self.inds_normalised)
+        stim_inds = simulator.sample_stimulus(inds_normalised_rescaled)
+        stim_inds = stim_inds.detach()
+
+        attn_soft_rescaled = normalized_rescaling(self.attn_map_soft)
+        stim_attn = simulator.sample_stimulus(attn_soft_rescaled)
 
         # stim = simulator.sample_stimulus(self.attn_map_soft, rescale=True) #stim contains values
 
         simulator.reset()
-        phosphenes = simulator(stim_attn)
+        phosphenes = simulator(stim_inds)
 
         def randomly_deactivate_phosphenes(phosphenes, max_total_current):
             """
@@ -379,10 +383,10 @@ class Painter(torch.nn.Module):
         adjusted_phosphenes = randomly_deactivate_phosphenes(phosphenes.clone(), max_total_current)
         total_current_after_adjustment =  adjusted_phosphenes.sum().item()
 
-        plt.imshow(adjusted_phosphenes.cpu().numpy(), cmap='gray')
-        plt.title(f"{PERCENTAGE}%\nSum: {total_current_after_adjustment:.2f}")
-        plt.axis("off")
-        plt.show()
+        # plt.imshow(adjusted_phosphenes.cpu().numpy(), cmap='gray')
+        # plt.title(f"{PERCENTAGE}%\nSum: {total_current_after_adjustment:.2f}")
+        # plt.axis("off")
+        # plt.show()
 
         #TODO find a way where the dimmest turn off first. or like randomly distributing the active phosphenes based on activation map
 
@@ -423,7 +427,7 @@ class Painter(torch.nn.Module):
     #     return self.points_vars
 
     def activation_mask_parameters(self):
-        self.activation_mask = self.inds
+        self.activation_mask = self.inds_normalised
         activation_mask_detached = self.activation_mask.detach().clone()
         activation_mask_detached.requires_grad = True
         self.activation_mask = activation_mask_detached
@@ -560,32 +564,54 @@ class Painter(torch.nn.Module):
         #other_inds = np.random.choice(range(attn_map.flatten().shape[0]), size=k, replace=False, p=attn_map_soft.flatten())
         #other_inds = np.array(np.unravel_index(other_inds, attn_map.shape)).T
         self.inds = self.stn(torch.Tensor(attn_map_soft).unsqueeze(0).unsqueeze(0))
-        plt.imshow(self.inds.detach().numpy(),cmap='gray')
+        # plt.imshow(self.inds.detach().numpy(),cmap='gray')
+        # plt.show()
+
+        #TODO old strategy
+        # self.inds_normalised = np.zeros(self.inds.shape)
+        # self.inds_normalised[:, 0] =  self.inds[:, 1].detach() / self.canvas_width
+        # self.inds_normalised[:, 1] =  self.inds[:, 0].detach() / self.canvas_height
+        # self.inds_normalised = self.inds_normalised.tolist()
+
+        #TODO new strategy: adjusting values based on their positions within the grid
+        # normalize each index (i.e., row and column) by the grid's dimensions
+        # transform each index into a relative position or proportion within the grid.
+
+        # height, width = self.inds.shape  # 224x224
+        # y_coords, x_coords = torch.meshgrid(torch.arange(height), torch.arange(width), indexing='ij')
+        # y_normalized = y_coords.float() / (height - 1)
+        # x_normalized = x_coords.float() / (width - 1)
+        #
+        # # Stack along a new dimension to create a 2-channel representation
+        # inds_normalized = torch.stack((y_normalized, x_normalized), dim=0)
+
+        self.inds_normalised = self.inds / self.inds.max()
+
+        # Now inds_normalized is a 2x224x224 tensor
+        # The first channel corresponds to y_normalized values
+        # The second channel corresponds to x_normalized values
+        #How to combine these 2 channels?
+
+
+
+        plt.imshow(self.inds_normalised.detach(), cmap='gray')
         plt.show()
 
-        self.inds_normalised = np.zeros(self.inds.shape)
-        self.inds_normalised[:, 0] =  self.inds[:, 1].detach() / self.canvas_width
-        self.inds_normalised[:, 1] =  self.inds[:, 0].detach() / self.canvas_height
-        self.inds_normalised = self.inds_normalised.tolist()
-
-        plt.imshow(self.inds_normalised, cmap='gray')
-        plt.show()
-
-        fig, axs = plt.subplots(1, 3, figsize=(18, 6))
-
-        axs[0].imshow(attn_map)
-        axs[0].set_title("Attention map")
-        axs[0].axis("off")
-
-        axs[1].imshow(intersec_map)
-        axs[1].set_title("Intersection map")
-        axs[1].axis("off")
-
-        axs[2].imshow(attn_map_soft)
-        axs[2].set_title("Normalized attention map (intersection map)")
-        axs[2].axis("off")
-
-        plt.show()
+        # fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+        #
+        # axs[0].imshow(attn_map)
+        # axs[0].set_title("Attention map")
+        # axs[0].axis("off")
+        #
+        # axs[1].imshow(intersec_map)
+        # axs[1].set_title("Intersection map")
+        # axs[1].axis("off")
+        #
+        # axs[2].imshow(attn_map_soft)
+        # axs[2].set_title("Normalized attention map (intersection map)")
+        # axs[2].axis("off")
+        #
+        # plt.show()
 
 
         return attn_map_soft

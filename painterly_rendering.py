@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import subprocess as sp
 # import wandb
+import matplotlib.pyplot as plt
 from PIL import Image
 from torchvision import models, transforms
 from tqdm.auto import tqdm, trange
@@ -71,6 +72,25 @@ def get_target(args):
 def count_trainable_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+# def plotting(epoch):
+#     final_config = np.load(f"{args.output_dir}/config.npy", allow_pickle=True).item()
+#
+#     # Access the loss_eval list
+#     loss_eval = final_config['loss_eval']
+#
+#     epochs = list(range(1, len(loss_eval) + 1))
+#     # Plotting
+#     plt.figure(figsize=(10, 6))  # Set the figure size for better readability
+#     fig, ax = plt.subplots()
+#     ax.plot(epochs, loss_eval, label='Loss', marker='o', linestyle='-')
+#     fig.title('Loss over Epochs')
+#     plt.xlabel('Epoch')
+#     plt.ylabel('Loss')
+#     plt.legend()
+#     plt.grid(True)
+#     plt.savefig(f"{args.output_dir}/loss_{epoch}.png")
+
+
 
 def main(args):
     loss_func = Loss(args)
@@ -113,13 +133,14 @@ def main(args):
         losses_dict = loss_func(sketches, inputs.detach(
         ), renderer.get_activation_mask_params(), counter, optimizer)
         loss = sum(list(losses_dict.values()))
-        loss.backward() #check if this step is working
+        loss.backward() # check this step is working
         optimizer.step_()
         if epoch % args.save_interval == 0:
             utils.plot_batch(inputs, sketches, f"{args.output_dir}/jpg_logs", counter,
                              use_wandb=args.use_wandb, title=f"iter{epoch}.jpg")
             renderer.save_png(
                 f"{args.output_dir}/png_logs", f"png_iter{epoch}")
+            # plotting()
         if epoch % args.eval_interval == 0:
             with torch.no_grad():
                 losses_dict_eval = loss_func(sketches, inputs,
@@ -181,6 +202,8 @@ def main(args):
     # utils.log_sketch_summary_final(
     #     path_png, args.use_wandb, args.device, best_iter, best_loss, "best total")
 
+
+
     return configs_to_save
 
 
@@ -197,6 +220,21 @@ if __name__ == "__main__":
     for k in configs_to_save.keys():
         final_config[k] = configs_to_save[k]
     np.save(f"{args.output_dir}/config.npy", final_config)
+    final_config = np.load(f"{args.output_dir}/config.npy", allow_pickle=True).item()
+
+    # Access the loss_eval list
+    loss_eval = final_config['loss_eval']
+
+    epochs = list(range(1, len(loss_eval) + 1))
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, loss_eval, label='Loss', marker='o', linestyle='-')
+    plt.title('Loss over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{args.output_dir}/loss.png")
     # if args.use_wandb:
     #     wandb.finish()
 
