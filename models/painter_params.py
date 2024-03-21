@@ -329,7 +329,7 @@ class Painter(torch.nn.Module):
 
         inds_normalised_rescaled = normalized_rescaling(self.inds_normalised)
         stim_inds = simulator.sample_stimulus(inds_normalised_rescaled)
-        stim_inds = stim_inds.detach()
+        stim_inds = stim_inds
 
         attn_soft_rescaled = normalized_rescaling(self.attn_map_soft)
         stim_attn = simulator.sample_stimulus(attn_soft_rescaled)

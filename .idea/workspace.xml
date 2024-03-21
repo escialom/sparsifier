@@ -6,7 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="581c47d4-0c03-4a4d-8315-42e8d29b896a" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/painter_params.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/painter_params.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/painterly_rendering.py" beforeDir="false" afterPath="$PROJECT_DIR$/painterly_rendering.py" afterDir="false" />
     </list>
@@ -85,7 +84,7 @@
       <workItem from="1710421283265" duration="11087000" />
       <workItem from="1710505055056" duration="1611000" />
       <workItem from="1710507067508" duration="1712000" />
-      <workItem from="1710760623427" duration="21300000" />
+      <workItem from="1710760623427" duration="25528000" />
     </task>
     <servers />
   </component>
@@ -110,7 +109,7 @@
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/sparsifier$run_object_sketching.coverage" NAME="run_object_sketching Coverage Results" MODIFIED="1709045753108" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/sparsifier$painterly_rendering.coverage" NAME="painterly_rendering Coverage Results" MODIFIED="1710946037895" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/sparsifier$painterly_rendering.coverage" NAME="painterly_rendering Coverage Results" MODIFIED="1711017127768" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$config.coverage" NAME="config Coverage Results" MODIFIED="1709044638475" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$loss.coverage" NAME="loss Coverage Results" MODIFIED="1709821976465" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/models" />
     <SUITE FILE_PATH="coverage/sparsifier$painter_params.coverage" NAME="painter_params Coverage Results" MODIFIED="1709815215047" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/models" />

@@ -127,13 +127,12 @@ def main(args):
 
         start = time.time()
         optimizer.zero_grad_()
-        sketches = renderer.get_image().to(args.device)
-
+        sketches = renderer.get_image().to(args.device)  # For every epoch it gets sketches, which is every time the newly initialized image
 
         losses_dict = loss_func(sketches, inputs.detach(
-        ), renderer.get_activation_mask_params(), counter, optimizer)
+        ), renderer.get_activation_mask_params(), counter, optimizer) #Then this newly rendered sketch is put into the loss function
         loss = sum(list(losses_dict.values()))
-        loss.backward() # check this step is working
+        loss.backward()  # check that this step is working
         optimizer.step_()
         if epoch % args.save_interval == 0:
             utils.plot_batch(inputs, sketches, f"{args.output_dir}/jpg_logs", counter,
@@ -162,7 +161,7 @@ def main(args):
                 cur_delta = loss_eval.item() - best_loss
                 if abs(cur_delta) > min_delta:
                     if cur_delta < 0:
-                        best_loss = loss_eval.item() #why this step?
+                        best_loss = loss_eval.item()
                         best_iter = epoch
                         terminate = False
                         utils.plot_batch(
@@ -220,13 +219,12 @@ if __name__ == "__main__":
     for k in configs_to_save.keys():
         final_config[k] = configs_to_save[k]
     np.save(f"{args.output_dir}/config.npy", final_config)
-    final_config = np.load(f"{args.output_dir}/config.npy", allow_pickle=True).item()
 
+    final_config = np.load(f"{args.output_dir}/config.npy", allow_pickle=True).item()
     # Access the loss_eval list
     loss_eval = final_config['loss_eval']
-
     epochs = list(range(1, len(loss_eval) + 1))
-    # Plotting
+
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, loss_eval, label='Loss', marker='o', linestyle='-')
     plt.title('Loss over Epochs')
@@ -235,6 +233,7 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid(True)
     plt.savefig(f"{args.output_dir}/loss.png")
+
     # if args.use_wandb:
     #     wandb.finish()
 
