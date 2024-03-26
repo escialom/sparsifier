@@ -323,16 +323,16 @@ class Painter(torch.nn.Module):
             return img_norm * stimulus_scale
 
         # TODO essential step.
-        # Now I did it for two variants, the intersec map and softmax attn map just for illustration
+
         # intersec_map_rescaled = normalized_rescaling(self.intersec_map)
         # stim_xdog = simulator.sample_stimulus(intersec_map_rescaled)
 
         inds_normalised_rescaled = normalized_rescaling(self.inds_normalised)
         stim_inds = simulator.sample_stimulus(inds_normalised_rescaled)
-        stim_inds = stim_inds
+        stim_inds = stim_inds.detach() # Otherwise the loss.backward() does not work
 
-        attn_soft_rescaled = normalized_rescaling(self.attn_map_soft)
-        stim_attn = simulator.sample_stimulus(attn_soft_rescaled)
+        # attn_soft_rescaled = normalized_rescaling(self.attn_map_soft)
+        # stim_attn = simulator.sample_stimulus(attn_soft_rescaled)
 
         # stim = simulator.sample_stimulus(self.attn_map_soft, rescale=True) #stim contains values
 
@@ -428,9 +428,14 @@ class Painter(torch.nn.Module):
 
     def activation_mask_parameters(self):
         self.activation_mask = self.inds_normalised
-        activation_mask_detached = self.activation_mask.detach().clone()
+        activation_mask_detached = self.activation_mask.detach()
+
         activation_mask_detached.requires_grad = True
+
+        #TODO does not contain 'tree' information anymore, needs new tree information?
+
         self.activation_mask = activation_mask_detached
+
         return self.activation_mask
 
     def get_activation_mask_params(self):
@@ -510,7 +515,7 @@ class Painter(torch.nn.Module):
         data_transforms = transforms.Compose([
                     preprocess.transforms[-1],
                 ])
-        self.image_input_attn_clip = data_transforms(target_im).to(self.device)
+        self.image_input_attn_clip = data_transforms(target_im).to(self.device) #TODO this is the input image
 
     def clip_attn(self):
         model, preprocess = clip.load(self.saliency_clip_model, device=self.device, jit=False)
@@ -567,35 +572,19 @@ class Painter(torch.nn.Module):
         # plt.imshow(self.inds.detach().numpy(),cmap='gray')
         # plt.show()
 
-        #TODO old strategy
+
         # self.inds_normalised = np.zeros(self.inds.shape)
         # self.inds_normalised[:, 0] =  self.inds[:, 1].detach() / self.canvas_width
         # self.inds_normalised[:, 1] =  self.inds[:, 0].detach() / self.canvas_height
         # self.inds_normalised = self.inds_normalised.tolist()
 
-        #TODO new strategy: adjusting values based on their positions within the grid
-        # normalize each index (i.e., row and column) by the grid's dimensions
-        # transform each index into a relative position or proportion within the grid.
 
-        # height, width = self.inds.shape  # 224x224
-        # y_coords, x_coords = torch.meshgrid(torch.arange(height), torch.arange(width), indexing='ij')
-        # y_normalized = y_coords.float() / (height - 1)
-        # x_normalized = x_coords.float() / (width - 1)
-        #
-        # # Stack along a new dimension to create a 2-channel representation
-        # inds_normalized = torch.stack((y_normalized, x_normalized), dim=0)
 
         self.inds_normalised = self.inds / self.inds.max()
 
-        # Now inds_normalized is a 2x224x224 tensor
-        # The first channel corresponds to y_normalized values
-        # The second channel corresponds to x_normalized values
-        #How to combine these 2 channels?
 
-
-
-        plt.imshow(self.inds_normalised.detach(), cmap='gray')
-        plt.show()
+        # plt.imshow(self.inds_normalised.detach(), cmap='gray')
+        # plt.show()
 
         # fig, axs = plt.subplots(1, 3, figsize=(18, 6))
         #
@@ -679,7 +668,6 @@ class Painter(torch.nn.Module):
         return self.thresh
 
     def get_inds(self):
-        #TODO make it scale to canvas size, now they are all between 0 and 1.
         return self.inds
 
     def get_mask(self):
@@ -701,7 +689,8 @@ class PainterOptimizer:
         #self.optim_color = args.force_sparse
 
     def init_optimizers(self):
-        self.points_optim = torch.optim.Adam([self.renderer.activation_mask_parameters()], lr=self.points_lr)
+        #self.points_optim = torch.optim.Adam([self.renderer.activation_mask_parameters()], lr=self.points_lr)
+        self.points_optim = torch.optim.Adam(self.renderer.stn.parameters(), lr = self.points_lr)
         #if self.optim_color:
          #   self.color_optim = torch.optim.Adam(self.renderer.set_color_parameters(), lr=self.color_lr)
 
@@ -721,6 +710,112 @@ class PainterOptimizer:
 
     def get_lr(self):
         return self.points_optim.param_groups[0]['lr']
+
+
+
+
+
+
+    def normalized_rescaling(self, img, stimulus_scale=100.e-6):
+        """Normalize <img> and rescale the pixel intensities in the range [0, <stimulus_scale>].
+        The output image represents the stimulation intensity map.
+        param stimulus_scale: the stimulation amplitude corresponding to the highest-valued pixel.
+        return: image with rescaled pixel values (stimulation intensity map in Ampères)."""
+        img_norm = (img - img.min()) / (img.max() - img.min())
+        return img_norm * stimulus_scale
+
+    def randomly_deactivate_phosphenes(self, phosphenes, max_total_current):
+        """
+        Randomly deactivates a selection of phosphenes to ensure the total current
+        does not exceed the specified maximum value. This function turns off phosphenes
+        completely without changing the intensity of the remaining ones.
+
+        Parameters:
+        phosphenes (Tensor): The original phosphenes activation map.
+        max_total_current (float): The maximum allowed sum of intensities over the electrode grid (total current).
+
+        Returns:
+        Tensor: The adjusted phosphenes intensity map.
+        """
+        # Flatten the phosphenes for easier manipulation
+        original_shape = phosphenes.shape
+        phosphenes_flat = phosphenes.flatten()
+
+        # Keep reducing phosphenes until the total current is under the limit
+        while phosphenes_flat.sum() > max_total_current:
+            # Find indices of currently active (non-zero) phosphenes
+            active_indices = torch.nonzero(phosphenes_flat, as_tuple=True)[0]
+
+            # If no active phosphenes left but still over max_current, break to avoid infinite loop
+            if len(active_indices) == 0:
+                break
+
+            # Randomly select one active phosphene to turn off
+            index_to_turn_off = np.random.choice(active_indices.cpu().numpy(), 1)
+
+            # Turn off the selected phosphene
+            phosphenes_flat[index_to_turn_off] = 0
+
+        # Reshape back to the original phosphenes map
+        adjusted_phosphenes = phosphenes_flat.reshape(original_shape)
+
+        return adjusted_phosphenes
+
+    def activation_mask_parameters(self):
+        #Parameters for the optimization
+        self.activation_mask = self.inds_normalised
+        activation_mask_detached = self.activation_mask.detach()
+        self.activation_mask_detached.requires_grad = True
+        self.activation_mask = activation_mask_detached
+
+        return self.activation_mask
+
+    def get_activation_mask_params(self):
+        return self.activation_mask
+
+    def save_png(self, output_dir, name):
+        canvas_size = (self.canvas_width, self.canvas_height)
+
+        img = self.forward()
+        to_pil = ToPILImage()
+        img_pil = to_pil(img)
+
+        img_pil.save('{}/{}.png'.format(output_dir, name), format='PNG', size=canvas_size)
+
+    def set_attention_threshold_map(self):
+        return self.attn_map_soft
+
+    def get_attn(self):
+        return self.attention_map
+
+    def set_attention_map(self):
+        return self.attention_map
+
+    def get_thresh(self):
+        return self.thresh
+
+    def get_inds(self):
+        return self.inds
+
+    def get_mask(self):
+        return self.mask
+
+    def set_random_noise(self, epoch):
+        if epoch % self.args.save_interval == 0:
+            self.add_random_noise = False
+        else:
+            self.add_random_noise = "noise" in self.args.augmentations
+
+    def softmax(self, x, tau=0.2):
+        e_x = np.exp(x / tau)
+        return e_x / e_x.sum()
+
+
+
+
+
+
+
 
 
 class Hook:

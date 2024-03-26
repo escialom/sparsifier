@@ -132,7 +132,22 @@ def main(args):
         losses_dict = loss_func(sketches, inputs.detach(
         ), renderer.get_activation_mask_params(), counter, optimizer) #Then this newly rendered sketch is put into the loss function
         loss = sum(list(losses_dict.values()))
+        print(loss)
         loss.backward()  # check that this step is working
+
+        # # Directly accessing the activation mask parameters
+        # activation_mask_params = renderer.activation_mask_parameters()
+        #
+        # # Checking if gradients are present
+        # if activation_mask_params.grad is not None:
+        #     print("Gradient for activation mask:", activation_mask_params.grad)
+        #     print("Gradient Norm for activation mask:", activation_mask_params.grad.norm(2))
+        # else:
+        #     print("No gradient for activation mask")
+        #
+        # for param in renderer.activation_mask_parameters():
+        #     assert param.requires_grad, "requires_grad is False for some activation_mask_parameters"
+
         optimizer.step_()
         if epoch % args.save_interval == 0:
             utils.plot_batch(inputs, sketches, f"{args.output_dir}/jpg_logs", counter,

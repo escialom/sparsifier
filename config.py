@@ -5,6 +5,8 @@ import random
 import numpy as np
 import torch
 from torch import Tensor
+
+
 # import wandb
 
 
@@ -29,7 +31,7 @@ def parse_arguments():
     output_dir = f"{abs_path}/output_sketches/{test_name}/"  # this line gave wrong formatting
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    parser.add_argument("--target",default= f"{abs_path}/target_images/camel.png", help="target image path")
+    parser.add_argument("--target", default=f"{abs_path}/target_images/camel.png", help="target image path")
     parser.add_argument("--target_file", type=str, default="camel.png",
                         help="target image file, located in <target_images>")
     parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/",
@@ -38,8 +40,10 @@ def parse_arguments():
                         help="if you want to load an svg file and train from it")
     parser.add_argument("--use_gpu", type=int, default=0)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--mask_object", type=int, default=0, help="if the target image contains background, it's better to mask it out")
-    parser.add_argument("--fix_scale", type=int, default=0, help="if the target image is not squared, it is recommended to fix the scale")
+    parser.add_argument("--mask_object", type=int, default=0, help="if the target image contains background, it's "
+                                                                   "better to mask it out")
+    parser.add_argument("--fix_scale", type=int, default=0, help="if the target image is not squared, it is "
+                                                                 "recommended to fix the scale")
     parser.add_argument("--display_logs", type=int, default=0)
     parser.add_argument("--display", type=int, default=0)
     parser.add_argument("--multiprocess", type=int, default=0,
@@ -61,15 +65,14 @@ def parse_arguments():
     # =========== training ============
     # =================================
     parser.add_argument("--num_iter", type=int, default=1500,
-                        help="number of optimization iterations") #default = 2001
+                        help="number of optimization iterations")  # default = 2001
     parser.add_argument("--num_stages", type=int, default=1,
-                        help="training stages, you can train x strokes, then freeze them and train another x strokes etc.")
+                        help="training stages, you can train x strokes, then freeze them and train another x strokes "
+                             "etc.")
     parser.add_argument("--num_sketches", type=int, default=3,
                         help="it is recommended to draw 3 sketches and automatically chose the best one")
     parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=0.0001) #default = 1.0
-    #parser.add_argument("--color_lr", type=float, default=0.01)
-    #parser.add_argument("--color_vars_threshold", type=float, default=0.0)
+    parser.add_argument("--lr", type=float, default=0.1)  # default = 1.0
     parser.add_argument("--batch_size", type=int, default=1,
                         help="for optimization it's only one image")
     parser.add_argument("--save_interval", type=int, default=10)
@@ -83,14 +86,10 @@ def parse_arguments():
     # ======== phosphene params =========
     # =================================
     parser.add_argument("--num_phosphenes", type=int,
-                        default=1000, help="number of phosphenes used to generate the image, this defines the level of density.") #TODO: num_phosphenes
-    #parser.add_argument("--width", type=float,
-    #                    default=1.5, help="stroke width")
-    #parser.add_argument("--control_points_per_seg", type=int, default=4)
-    #parser.add_argument("--num_segments", type=int, default=1,
-    #                    help="number of segments for each stroke, each stroke is a bezier curve with 4 control points")
-    parser.add_argument('--patch_size', type=int, help='Size of each of the patches of phosphenes.', default=8) #10
-    parser.add_argument('--phosphene_radius', type=int, help='Radius of the phosphene.', default=1.2) #1.5
+                        default=1000,
+                        help="number of phosphenes used to generate the image, this defines the level of density.")
+    parser.add_argument('--patch_size', type=int, help='Size of each of the patches of phosphenes.', default=8)  # 10
+    parser.add_argument('--phosphene_radius', type=int, help='Radius of the phosphene.', default=1.2)  # 1.5
     parser.add_argument("--attention_init", type=int, default=1,
                         help="if True, use the attention heads of Dino model to set the location of the initial strokes")
     parser.add_argument("--saliency_model", type=str, default="clip")
@@ -98,7 +97,8 @@ def parse_arguments():
     parser.add_argument("--xdog_intersec", type=int, default=1)
     parser.add_argument("--mask_object_attention", type=int, default=0)
     parser.add_argument("--softmax_temp", type=float, default=0.3)
-    parser.add_argument("--constrain", type=int, default= 1)
+    parser.add_argument("--constrain", type=int, default=1)
+    parser.add_argument("--percentage", type=int, default=100, help="Percentage of phosphenes that you want to keep")
 
     # =================================
     # ============= loss ==============
@@ -118,8 +118,6 @@ def parse_arguments():
                         help="can be any combination of: 'affine_noise_eraserchunks_eraser_press'")
     parser.add_argument("--noise_thresh", type=float, default=0.5)
     parser.add_argument("--aug_scale_min", type=float, default=0.7)
-    #parser.add_argument("--force_sparse", type=float, default=0,
-    #                   help="if True, use L1 regularization on stroke's opacity to encourage small number of strokes")
     parser.add_argument("--clip_conv_loss", type=float, default=1)
     parser.add_argument("--clip_conv_loss_type", type=str, default="L2")
     parser.add_argument("--clip_conv_layer_weights",
@@ -132,7 +130,7 @@ def parse_arguments():
     args = parser.parse_args()
     set_seed(args.seed)
 
-    assert args.image_scale % args.patch_size == 0 #TODO change patch_size to 8 or 7? and change phosphene radius as well accordingly on the same scale?
+    assert args.image_scale % args.patch_size == 0
 
     args.clip_conv_layer_weights = [
         float(item) for item in args.clip_conv_layer_weights.split(',')]
@@ -154,7 +152,7 @@ def parse_arguments():
 
     if args.use_gpu:
         args.device = torch.device("cuda" if (
-            torch.cuda.is_available() and torch.cuda.device_count() > 0) else "cpu")
+                torch.cuda.is_available() and torch.cuda.device_count() > 0) else "cpu")
     else:
         args.device = torch.device("cpu")
     # pydiffvg.set_use_gpu(torch.cuda.is_available() and args.use_gpu) #TODO: edit this
