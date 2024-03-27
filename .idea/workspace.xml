@@ -5,12 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="581c47d4-0c03-4a4d-8315-42e8d29b896a" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/models/simplified_painter.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/simplified_painter.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/painter_params.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/painter_params.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/painterly_rendering.py" beforeDir="false" afterPath="$PROJECT_DIR$/painterly_rendering.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/loss.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/loss.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/simplified_painter.py" beforeDir="false" afterPath="$PROJECT_DIR$/simplified_painter.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -99,7 +96,7 @@
       <workItem from="1710421283265" duration="11087000" />
       <workItem from="1710505055056" duration="1611000" />
       <workItem from="1710507067508" duration="1712000" />
-      <workItem from="1710760623427" duration="74708000" />
+      <workItem from="1710760623427" duration="77331000" />
     </task>
     <servers />
   </component>
