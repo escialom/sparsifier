@@ -814,7 +814,36 @@ class PainterOptimizer:
 
 
 
+class PainterOptimizer:
+    def __init__(self, args, renderer):
+        self.renderer = renderer
+        self.points_lr = args.lr
+        #self.color_lr = args.color_lr
+        self.args = args
+        #self.optim_color = args.force_sparse
 
+    def init_optimizers(self):
+        #self.points_optim = torch.optim.Adam([self.renderer.activation_mask_parameters()], lr=self.points_lr)
+        self.points_optim = torch.optim.Adam(self.renderer.stn.parameters(), lr = self.points_lr)
+        #if self.optim_color:
+         #   self.color_optim = torch.optim.Adam(self.renderer.set_color_parameters(), lr=self.color_lr)
+
+    def update_lr(self, counter):
+        # TODO: currently not updating lr, does not do anything
+        pass
+
+    def zero_grad_(self):
+        self.points_optim.zero_grad()
+        #if self.optim_color:
+         #   self.color_optim.zero_grad()
+
+    def step_(self):
+        self.points_optim.step()
+        #if self.optim_color:
+         #   self.color_optim.step()
+
+    def get_lr(self):
+        return self.points_optim.param_groups[0]['lr']
 
 
 

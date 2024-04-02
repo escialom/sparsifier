@@ -40,7 +40,7 @@ def load_renderer(args, target_im=None, mask=None):
     return renderer
 
 
-def get_target(args):
+def get_target(args): # moved to the new Painter model
     target = Image.open(args.target)
     if target.mode == "RGBA":
         # Create a white rgba background

@@ -218,15 +218,6 @@ def plot_attn_clip(attn, threshold_map, inputs, inds, use_wandb, output_path, di
     main_im = np.transpose(main_im.cpu().numpy(), (1, 2, 0))
     plt.imshow(main_im, interpolation='nearest')
     inds = inds.cpu().detach().numpy()
-    #
-    # canvas = torch.zeros([224, 224])
-    #
-    # # Compute the scaling factor
-    # scale_x = canvas.shape[0] / inds.shape[0]
-    # scale_y = canvas.shape[1] / inds.shape[1]
-    #
-    # inds[:, 0] = inds[:, 0] * scale_y  # Scale y coordinates
-    # inds[:, 1] = inds[:, 1] * scale_x  # Scale x coordinates
 
     plt.scatter(inds[:, 1], inds[:, 0], s=10, c='red', marker='o')
     plt.title("input im")

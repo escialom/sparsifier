@@ -1,7 +1,9 @@
 import torch.nn as nn
 import numpy as np
 import torch
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
+from torchvision.transforms import ToPILImage
 
 # Importing necessary libraries and modules
 import dynaphos
@@ -9,98 +11,129 @@ import CLIP_.clip as clip
 from PIL import Image
 from dynaphos import utils, cortex_models
 from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
-from config import args
+import config
 import sketch_utils as utils
 import PIL
 from scipy.ndimage.filters import gaussian_filter
 from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
 from torchvision import transforms
+from PIL import Image
 
 
 # -------------------------
 # Define model classes
 # -------------------------
-class Painter_model(nn.Module):
+
+
+class Phosphene_model(nn.Module):
     def __init__(self, args,
-                 num_phosphenes=args.num_phosphenes,
+                 num_phosphenes=None,
                  imsize=224,
                  device=None):
-        super(Painter_model, self).__init__()
+        super(Phosphene_model, self).__init__()
 
         self.args = args
         self.num_phosphenes = num_phosphenes  # Number of electrodes or phosphenes to initialize the electrode grid with
         self.constrain = args.constrain  # Related to if we want to have number of phosphenes constrained
         self.percentage = args.percentage  # Indicates the percentage of phosphenes to keep
         self.device = device
-        self.canvas = args.canvas  # Canvas
         self.canvas_width, self.canvas_height = imsize, imsize  # Canvas size
         self.params = utils.load_params(
             'C:/Users/vanholk/sparsifier/dynaphos/config/params.yaml')  # TODO move this to our config file
         self.params['run']['fps'] = 10  # 10 fps -> a single frame represents 100 milliseconds
+        self.saliency_clip_model = args.saliency_clip_model
+        self.text_target = args.text_target
 
         self.stn = PhospheneTransformerNet(size=self.canvas_width)  # Spatial Transformer Network
         self.dynaphos = dynaphos  # Dynaphos
-        self.clip_model, self.preprocess = clip.load(self.saliency_clip_model, device=self.device, jit=False)  # CLIP model
+        self.clip_model, self.preprocess = clip.load(self.saliency_clip_model, device=self.device,
+                                                     jit=False)  # CLIP model
         self.clip_model.eval().to(self.device)
 
         self.phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(self.params,
                                                                                              self.num_phosphenes)
         self.simulator = PhospheneSimulator(self.params, self.phosphene_coords)
 
-    def forward(self, init_sketch, target_im):
-        # Put attention map in stn to get inds
-        self.inds = self.stn(torch.Tensor(attn_map_soft).unsqueeze(0).unsqueeze(0))
-        self.inds_normalised = (self.inds / self.inds.max()).to_list()
+    def get_clip_saliency_map(self, args, target_im):
+        data_transforms = transforms.Compose([
+            self.preprocess.transforms[-1],
+        ])
 
-        inds_normalised_rescaled = normalized_rescaling(self.inds_normalised)
-        stim_inds = self.simulator.sample_stimulus(inds_normalised_rescaled)
-        stim_inds = stim_inds.detach()  # Otherwise the loss.backward() does not work
+        image_input_clip = data_transforms(target_im).to(args.device)  # Defining image input for CLIP
+        text_input_clip = clip.tokenize([self.text_target]).to(args.device)  # Defining text input for CLIP
+
+        attention_map = interpret(image_input_clip, text_input_clip, self.clip_model,
+                                  device=args.device)  # Make
+        # attention map using the interpret method
+
+        attn_map = (attention_map - attention_map.min()) / (
+                attention_map.max() - attention_map.min())  # Normalization of
+        # attention map
+
+        xdog = XDoG_()  # Make instance of XDoG
+        im_xdog = xdog(image_input_clip[0].permute(1, 2, 0).cpu().detach().numpy(), k=10)
+        intersec_map = (1 - im_xdog) * attn_map  # Multiplication of attention map and edge map
+
+        clip_saliency_map = np.copy(intersec_map)
+        clip_saliency_map[intersec_map > 0] = softmax(intersec_map[intersec_map > 0],
+                                                      tau=args.softmax_temp)
+
+        return attention_map, clip_saliency_map
+
+    def forward(self, target_im, args):
+        #attention_map, clip_saliency_map = self.get_clip_saliency_map(args, target_im)  # These are good
+        #clip_saliency_map = torch.Tensor(clip_saliency_map) / clip_saliency_map.max()
+        #clip_saliency_map.requires_grad = True
+        clip_saliency_map = torch.ones(size=(224, 224), requires_grad=True)
+        # Put attention map in stn to get inds
+        phosphene_placement_map = self.stn(clip_saliency_map.unsqueeze(0).unsqueeze(0)) #TODO here it becomes nan
+        #phosphene_placement_map = (phosphene_placement_map / phosphene_placement_map.max())
+
+        phosphene_placement_map = normalized_rescaling(phosphene_placement_map)
+        #phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map)
+        # phosphene_placement_map = phosphene_placement_map.detach()  # Otherwise the loss.backward() does not work
 
         self.simulator.reset()
 
-        phosphenes = self.simulator(stim_inds)
+        # do stn params actually change from an iteration to the next?
+        # to try: remove dynaphos altogether and just output (224, 224) from stn
+        phosphene_im = self.simulator(phosphene_placement_map)
 
         if self.constrain:
-            original_phosphenes_sum = phosphenes.sum().item()
+            original_phosphenes_sum = phosphene_im.sum().item()
             max_total_current = original_phosphenes_sum * (self.percentage / 100.0)
-            adjusted_phosphenes = randomly_deactivate_phosphenes(phosphenes.clone(), max_total_current)
-            phosphenes = adjusted_phosphenes
+            adjusted_phosphenes = randomly_deactivate_phosphenes(phosphene_im.clone(), max_total_current)
+            phosphene_im = adjusted_phosphenes
 
-        plot_init_phosphenes(phosphenes)
+        # plot_init_phosphenes(phosphenes)
 
-    #And do preprocessing of the sketch before inputting in CLIP model
-        self.normalize_transform = transforms.Compose([
-            self.preprocess.transforms[0],  # Resize
-            self.preprocess.transforms[1],  # CenterCrop
-            self.preprocess.transforms[-1],  # Normalize
-        ])
+        phosphene_im = phosphene_im.unsqueeze(0)
+        phosphene_im = phosphene_im.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
+        phosphene_im = phosphene_im.permute(0, 1, 2, 3)#.to(self.device)  # NHW -> NHW
 
-        phos_augs = [self.normalize_transform(phosphenes)]
+        return phosphene_im
 
-        phosphenes = phos_augs # TODO this should now go into the training
+    def save_png(self, output_dir, name, phosphene_im):
+        canvas_size = (self.canvas_width, self.canvas_height)
 
-        return phosphenes
+        to_pil = ToPILImage()
+        img_pil = to_pil(phosphene_im.squeeze(0).squeeze(0))
+
+        img_pil.save('{}/{}.png'.format(output_dir, name), format='PNG', size=canvas_size)
 
 
 class PhospheneTransformerNet(nn.Module):
     def __init__(self, size):
         super(PhospheneTransformerNet, self).__init__()
         self.size = size
-        self.localization = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=7),
-            nn.MaxPool2d(2, stride=2),
-            nn.ReLU(True),
-            nn.Conv2d(8, 10, kernel_size=5),
-            nn.MaxPool2d(2, stride=2),
-            nn.ReLU(True)
-        )
-
-        self.fc_loc = nn.Sequential(
-            nn.Linear(10 * 52 * 52, 1024),  # Adjusted input dimension
-            nn.ReLU(True),
-            nn.Linear(1024, 224 * 224)  # TODO: change this to a vector/matrix given to dynaphos
-        )
+        self.localization = nn.Sequential(nn.Conv2d(1, 8, kernel_size=7),
+        nn.MaxPool2d(2, stride=2),
+        nn.LeakyReLU(True),
+        nn.Conv2d(8, 10, kernel_size=5),
+        nn.MaxPool2d(2, stride=2),
+        nn.LeakyReLU(True))
+        self.fc_loc = nn.Sequential(nn.Linear(10*52*52, 1024))
 
     def forward(self, x):
         xs = self.localization(x)
@@ -109,8 +142,10 @@ class PhospheneTransformerNet(nn.Module):
         num_features = 10 * 52 * 52
         xs = xs.view(-1, num_features)  # num_features needs to be calculated based on the STN design
         theta = self.fc_loc(xs)
-        theta = theta.view(224, 224)
-        theta = (theta - theta.min()) / (theta.max() - theta.min())
+        theta = F.softmax(theta)
+        #theta = theta.view(224, 224)
+        theta = theta.view(32, 32)
+        # theta = (theta - theta.min()) / (theta.max() - theta.min())
 
         return theta
 
@@ -167,7 +202,7 @@ def randomly_deactivate_phosphenes(phosphenes, max_total_current):
     return adjusted_phosphenes
 
 
-def plot_init_phosphenes(phosphenes):
+def plot_init_phosphenes(args, phosphenes):
     img = phosphenes
     # Convert img from HW to NHW
     img = img.unsqueeze(0)
@@ -187,8 +222,8 @@ def plot_init_phosphenes(phosphenes):
     return img
 
 
-def get_target_and_mask(args):
-    target = Image.open(args.target)
+def get_target_and_mask(args, target_image_path):
+    target = Image.open(target_image_path)
     if target.mode == "RGBA":
         # Create a white rgba background
         new_image = Image.new("RGBA", target.size, "WHITE")
@@ -218,12 +253,13 @@ def get_target_and_mask(args):
 
 def interpret(image, texts, model, device):
     images = image.repeat(1, 1, 1, 1)
-    res = model.encode_image(images)
+    res = model.encode_image(images)  # TODO here is where it goes wrong, it gives dtype=torch.float16
     model.zero_grad()
-    image_attn_blocks = list(dict(model.visual.transformer.resblocks.named_children()).values())
+    image_attn_blocks = list(dict(
+        model.visual.transformer.resblocks.named_children()).values())  # TODO i think here with the generation of the image attn blocks it goes wrong
     num_tokens = image_attn_blocks[0].attn_probs.shape[-1]
     R = torch.eye(num_tokens, num_tokens, dtype=image_attn_blocks[0].attn_probs.dtype).to(device)
-    R = R.unsqueeze(0).expand(1, num_tokens, num_tokens)
+    R = R.unsqueeze(0).expand(1, num_tokens, num_tokens)  # TODO here as well it has the dtype torch.float16
     cams = []  # there are 12 attention blocks
     for i, blk in enumerate(image_attn_blocks):
         cam = blk.attn_probs.detach()  # attn_probs shape is 12, 50, 50
@@ -238,13 +274,14 @@ def interpret(image, texts, model, device):
     cams_avg = cams_avg[:, 0, 1:]  # 12, 1, 49
     image_relevance = cams_avg.mean(dim=0).unsqueeze(0)
     image_relevance = image_relevance.reshape(1, 1, 7, 7)
+    image_relevance = image_relevance.to(torch.float32)
     image_relevance = torch.nn.functional.interpolate(image_relevance, size=224, mode='bicubic')
     image_relevance = image_relevance.reshape(224, 224).data.cpu().numpy().astype(np.float32)
     image_relevance = (image_relevance - image_relevance.min()) / (image_relevance.max() - image_relevance.min())
     return image_relevance
 
 
-def softmax(self, x, tau=0.2):
+def softmax(x, tau=0.2):
     e_x = np.exp(x / tau)
     return e_x / e_x.sum()
 
@@ -272,40 +309,3 @@ class XDoG_(object):
             imdiff = imdiff >= th
         imdiff = imdiff.astype('float32')
         return imdiff
-
-
-# -------------------------
-# Main Script
-# -------------------------
-
-# Getting preprocessed target and mask
-target_im, mask = get_target_and_mask(args)
-
-#Initializing painter model to access clip_model and preprocessing
-painter_model = Painter_model(args=args, device=args.device)
-
-#Defining data transforms for preprocessing
-data_transforms = transforms.Compose([
-    painter_model.preprocess.transforms[-1], ])
-
-#Generating attention map
-image_input_clip = data_transforms(target_im).to(args.device)
-text_input_clip = clip.tokenize([args.text_target]).to(args.device)
-
-attention_map = interpret(image_input_clip, text_input_clip, painter_model.clip_model, device=args.device)
-del painter_model.clip_model
-
-attn_map = (attention_map - attention_map.min()) / (attention_map.max() - attention_map.min())
-
-xdog = XDoG_()
-im_xdog = xdog(image_input_clip[0].permute(1, 2, 0).cpu().detach().numpy(), k=10)
-intersec_map = (1 - im_xdog) * attn_map
-
-attn_map_soft = np.copy(intersec_map)
-attn_map_soft[intersec_map > 0] = softmax(intersec_map[intersec_map > 0], tau=args.softmax_temp)
-
-
-# And do preprocessing of the target image for the CLIP model
-target_im_augs = [painter_model.normalize_transform(target_im)]
-target_im = target_im_augs # TODO this should go into the training
-

@@ -72,7 +72,7 @@ def parse_arguments():
     parser.add_argument("--num_sketches", type=int, default=3,
                         help="it is recommended to draw 3 sketches and automatically chose the best one")
     parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=0.1)  # default = 1.0
+    parser.add_argument("--lr", type=float, default=0.01)  # default = 1.0
     parser.add_argument("--batch_size", type=int, default=1,
                         help="for optimization it's only one image")
     parser.add_argument("--save_interval", type=int, default=10)
@@ -86,7 +86,7 @@ def parse_arguments():
     # ======== phosphene params =========
     # =================================
     parser.add_argument("--num_phosphenes", type=int,
-                        default=1000,
+                        default=1024,
                         help="number of phosphenes used to generate the image, this defines the level of density.")
     parser.add_argument('--patch_size', type=int, help='Size of each of the patches of phosphenes.', default=8)  # 10
     parser.add_argument('--phosphene_radius', type=int, help='Radius of the phosphene.', default=1.2)  # 1.5
@@ -97,7 +97,7 @@ def parse_arguments():
     parser.add_argument("--xdog_intersec", type=int, default=1)
     parser.add_argument("--mask_object_attention", type=int, default=0)
     parser.add_argument("--softmax_temp", type=float, default=0.3)
-    parser.add_argument("--constrain", type=int, default=1)
+    parser.add_argument("--constrain", type=int, default=0)
     parser.add_argument("--percentage", type=int, default=100, help="Percentage of phosphenes that you want to keep")
 
     # =================================

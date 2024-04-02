@@ -408,21 +408,18 @@ class CLIPConvLoss(torch.nn.Module):
         #         y = self.target_transform(target).to(self.args.device)
         conv_loss_dict = {}
 
-        # TODO this will now retrieve both the preprocessed sketch and target
         y = target.to(self.device) #1, 3, H, W
         x = sketch.to(self.device) #1, 3, H, W
 
 
-        # TODO this is moved to preprocessing
-        # sketch_augs, img_augs = [self.normalize_transform(x)], [
-        #     self.normalize_transform(y)]
+        sketch_augs, img_augs = [self.normalize_transform(x)], [
+            self.normalize_transform(y)]
 
-        # TODO these are augmentations only applied during training
         if mode == "train":
             for n in range(self.num_augs):
                 augmented_pair = self.augment_trans(torch.cat([x, y]))
-                sketch_augs.append(augmented_pair[0].unsqueeze(0))
-                img_augs.append(augmented_pair[1].unsqueeze(0))
+                sketch_augs.append(augmented_pair[0].unsqueeze(0)) # change to phosphenes
+                img_augs.append(augmented_pair[1].unsqueeze(0)) # change to target_im
 
         xs = torch.cat(sketch_augs, dim=0).to(self.device)
         ys = torch.cat(img_augs, dim=0).to(self.device)
