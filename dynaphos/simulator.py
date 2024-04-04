@@ -144,9 +144,13 @@ class Sigma(State):
         super().__init__(params, shape, verbose)
 
         p = self.params['size']
+        epsilon = 1e-8  # Small positive value to avoid sqrt(0) or sqrt(negative numbers)
         if p['size_equation'] == 'sqrt':  # Tehovnik 2007
             def f(x):
-                return torch.sqrt(torch.div(x, p['current_spread']))
+                division_result = torch.div(x, p['current_spread'])
+                safe_division_result = torch.clamp(division_result, min=epsilon)  # Ensure non-zero positive before sqrt
+                return torch.sqrt(safe_division_result)
+                # return torch.sqrt(torch.div(x, p['current_spread']))
         elif p['size_equation'] == 'sigmoid':  # Bosking et al., 2017
             def f(x):
                 return 0.5 * p['MD'] * sigmoid(p['slope_size'] *
@@ -386,8 +390,25 @@ class GaussianSimulator:
         """
 
         # Calculate normalized Gaussian (peak has value 1).
-        sigma = self.sigma.get().clamp(1e-22, None)  # TODO: clamping redundant? Default division by zero gives inf.
-        exp = torch.exp(-0.5 * (self.phosphene_maps / sigma) ** 2)
+        # sigma = self.sigma.get().clamp(1e-22, None)  # TODO: clamping redundant? Default division by zero gives inf.
+
+        # exp = torch.exp(-0.5 * (self.phosphene_maps / sigma) ** 2)
+
+        # tighter sigma clamping
+        sigma = self.sigma.get().clamp(min=1e-6, max=1e6)  # 1e-22 is very small, constrain it further
+
+        # check whether input is ok
+        if not torch.isfinite(
+                self.phosphene_maps).all():  # same check as we did above with isnan and isinf but more concise
+            raise ValueError("phosphene_maps contains inf or nan values")
+
+        # clamp exponent too
+        exponent = -0.5 * (self.phosphene_maps / sigma) ** 2
+        exponent = torch.clamp(exponent, min=-20, max=20)  # Optional: Clamp exponent to avoid overflow
+        exp = torch.exp(exponent)
+        # Clamp the output of the exponential function to ensure it doesn't fall below 1e-8
+        exp = torch.clamp(exp, min=1e-8)
+
         return exp #TODO returns Gaussian activation maps for the phosphenes.
 
     def get_state(self):

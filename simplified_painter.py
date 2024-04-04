@@ -1,6 +1,7 @@
 import torch.nn as nn
 import numpy as np
 import torch
+import torch.nn.init as init
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torchvision.transforms import ToPILImage
@@ -47,23 +48,24 @@ class Phosphene_model(nn.Module):
 
         self.stn = PhospheneTransformerNet(size=self.canvas_width)  # Spatial Transformer Network
         self.dynaphos = dynaphos  # Dynaphos
-        self.clip_model, self.preprocess = clip.load(self.saliency_clip_model, device=self.device,
-                                                     jit=False)  # CLIP model
-        self.clip_model.eval().to(self.device)
 
         self.phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(self.params,
                                                                                              self.num_phosphenes)
         self.simulator = PhospheneSimulator(self.params, self.phosphene_coords)
 
     def get_clip_saliency_map(self, args, target_im):
+        clip_model, preprocess = clip.load(self.saliency_clip_model, device=self.device,
+                                                     jit=False)  # CLIP model
+        clip_model.eval().to(self.device)
+
         data_transforms = transforms.Compose([
-            self.preprocess.transforms[-1],
+            preprocess.transforms[-1],
         ])
 
         image_input_clip = data_transforms(target_im).to(args.device)  # Defining image input for CLIP
         text_input_clip = clip.tokenize([self.text_target]).to(args.device)  # Defining text input for CLIP
 
-        attention_map = interpret(image_input_clip, text_input_clip, self.clip_model,
+        attention_map = interpret(image_input_clip, text_input_clip, clip_model,
                                   device=args.device)  # Make
         # attention map using the interpret method
 
@@ -79,19 +81,21 @@ class Phosphene_model(nn.Module):
         clip_saliency_map[intersec_map > 0] = softmax(intersec_map[intersec_map > 0],
                                                       tau=args.softmax_temp)
 
+        del clip_model
+
         return attention_map, clip_saliency_map
 
     def forward(self, target_im, args):
         #attention_map, clip_saliency_map = self.get_clip_saliency_map(args, target_im)  # These are good
         #clip_saliency_map = torch.Tensor(clip_saliency_map) / clip_saliency_map.max()
         #clip_saliency_map.requires_grad = True
-        clip_saliency_map = torch.ones(size=(224, 224), requires_grad=True)
+        clip_saliency_map = torch.rand(size=(224, 224), requires_grad=True)
         # Put attention map in stn to get inds
         phosphene_placement_map = self.stn(clip_saliency_map.unsqueeze(0).unsqueeze(0)) #TODO here it becomes nan
-        #phosphene_placement_map = (phosphene_placement_map / phosphene_placement_map.max())
+        # phosphene_placement_map = (phosphene_placement_map / phosphene_placement_map.max())
 
         phosphene_placement_map = normalized_rescaling(phosphene_placement_map)
-        #phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map)
+        # phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map)
         # phosphene_placement_map = phosphene_placement_map.detach()  # Otherwise the loss.backward() does not work
 
         self.simulator.reset()
@@ -127,27 +131,82 @@ class PhospheneTransformerNet(nn.Module):
     def __init__(self, size):
         super(PhospheneTransformerNet, self).__init__()
         self.size = size
-        self.localization = nn.Sequential(nn.Conv2d(1, 8, kernel_size=7),
-        nn.MaxPool2d(2, stride=2),
-        nn.LeakyReLU(True),
-        nn.Conv2d(8, 10, kernel_size=5),
-        nn.MaxPool2d(2, stride=2),
-        nn.LeakyReLU(True))
-        self.fc_loc = nn.Sequential(nn.Linear(10*52*52, 1024))
+        # Define each layer separately to allow for intermediate checks
+        self.conv1 = nn.Conv2d(1, 8, kernel_size=7)
+        self.pool1 = nn.MaxPool2d(2, stride=2)
+        self.relu1 = nn.ReLU(True)
+        self.conv2 = nn.Conv2d(8, 10, kernel_size=5)
+        self.pool2 = nn.MaxPool2d(2, stride=2)
+        self.relu2 = nn.ReLU(True)
+        # Linear layer
+        self.fc_loc = nn.Linear(10 * 52 * 52, 1024)
+
+        # Initialize weights
+        self._init_weights()
+
+    def _init_weights(self):
+        # Initialize Convolutional layers with Kaiming normalization
+        for conv in [self.conv1, self.conv2]:
+            init.kaiming_uniform(conv.weight, mode='fan_out', nonlinearity='relu')
+            if conv.bias is not None:
+                init.constant_(conv.bias, 0)
+
+        # Initialize Fully Connected layer with Xavier initialization
+        init.xavier_normal_(self.fc_loc.weight)
+        init.constant_(self.fc_loc.bias, 0)
 
     def forward(self, x):
-        xs = self.localization(x)
-        # Ensure xs is correctly reshaped for the fully connected layers
-        # The reshaping depends on the output size of your localization layers
-        num_features = 10 * 52 * 52
-        xs = xs.view(-1, num_features)  # num_features needs to be calculated based on the STN design
-        theta = self.fc_loc(xs)
-        theta = F.softmax(theta)
-        #theta = theta.view(224, 224)
-        theta = theta.view(32, 32)
-        # theta = (theta - theta.min()) / (theta.max() - theta.min())
+        x = self.conv1(x)
+        assert not torch.isnan(x).any(), 'NaN detected after conv1'
 
-        return theta
+        x = self.pool1(x)
+        assert not torch.isnan(x).any(), 'NaN detected after pool1'
+
+        x = self.relu1(x)
+        assert not torch.isnan(x).any(), 'NaN detected after relu1'
+
+        x = self.conv2(x)
+        assert not torch.isnan(x).any(), 'NaN detected after conv2'
+
+        x = self.pool2(x)
+        assert not torch.isnan(x).any(), 'NaN detected after pool2'
+
+        x = self.relu2(x)
+        assert not torch.isnan(x).any(), 'NaN detected after relu2'
+
+        # Flatten the output for the fully connected layer
+        x = torch.flatten(x, 1)
+        assert not torch.isnan(x).any(), 'NaN detected after flattening'
+
+        x = self.fc_loc(x)
+        assert not torch.isnan(x).any(), 'NaN detected after fc_loc'
+
+        return x
+
+    # def __init__(self, size):
+    #     super(PhospheneTransformerNet, self).__init__()
+    #     self.size = size
+    #     self.localization = nn.Sequential(nn.Conv2d(1, 8, kernel_size=7),
+    #     nn.MaxPool2d(2, stride=2),
+    #     nn.ReLU(True),
+    #     nn.Conv2d(8, 10, kernel_size=5),
+    #     nn.MaxPool2d(2, stride=2),
+    #     nn.ReLU(True))
+    #     self.fc_loc = nn.Sequential(nn.Linear(10*52*52, 1024))
+
+    # def forward(self, x):
+    #     xs = self.localization(x)
+    #     # Ensure xs is correctly reshaped for the fully connected layers
+    #     # The reshaping depends on the output size of your localization layers
+    #     num_features = 10 * 52 * 52
+    #     xs = xs.view(-1, num_features)  # num_features needs to be calculated based on the STN design
+    #     theta = self.fc_loc(xs)
+    #     theta = F.softmax(theta)
+    #     #theta = theta.view(224, 224)
+    #     theta = theta.view(32, 32)
+    #     # theta = (theta - theta.min()) / (theta.max() - theta.min())
+    #
+    #     return theta
 
 
 # -------------------------

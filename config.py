@@ -72,7 +72,7 @@ def parse_arguments():
     parser.add_argument("--num_sketches", type=int, default=3,
                         help="it is recommended to draw 3 sketches and automatically chose the best one")
     parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=0.01)  # default = 1.0
+    parser.add_argument("--lr", type=float, default=0.0001)  # default = 1.0
     parser.add_argument("--batch_size", type=int, default=1,
                         help="for optimization it's only one image")
     parser.add_argument("--save_interval", type=int, default=10)
