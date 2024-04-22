@@ -46,7 +46,7 @@ class Loss(nn.Module):
                 if epoch > self.start_clip:
                     self.losses_to_apply.append("clip")
 
-    def forward(self, sketches, targets, renderer, epoch, points_optim=None, mode="train"):
+    def forward(self, sketches, targets, phosphene_model, epoch, points_optim=None, mode="train"):
         loss = 0
         self.update_losses_to_apply(epoch)
 
@@ -399,6 +399,7 @@ class CLIPConvLoss(torch.nn.Module):
         self.counter = 0
 
     def forward(self, sketch, target, mode="train"):
+        # TODO simplify the loss. isolate geometric or semantic loss only. weight param.
         """
         Parameters
         ----------
@@ -411,15 +412,14 @@ class CLIPConvLoss(torch.nn.Module):
         y = target.to(self.device) #1, 3, H, W
         x = sketch.to(self.device) #1, 3, H, W
 
-
         sketch_augs, img_augs = [self.normalize_transform(x)], [
             self.normalize_transform(y)]
 
         if mode == "train":
             for n in range(self.num_augs):
                 augmented_pair = self.augment_trans(torch.cat([x, y]))
-                sketch_augs.append(augmented_pair[0].unsqueeze(0)) # change to phosphenes
-                img_augs.append(augmented_pair[1].unsqueeze(0)) # change to target_im
+                sketch_augs.append(augmented_pair[0].unsqueeze(0))
+                img_augs.append(augmented_pair[1].unsqueeze(0))
 
         xs = torch.cat(sketch_augs, dim=0).to(self.device)
         ys = torch.cat(img_augs, dim=0).to(self.device)

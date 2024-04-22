@@ -1,6 +1,6 @@
 # run settings
 run:
-  resolution: [256,256] #[width,height] in pixels
+  resolution: [256,256] #[width,height] in pixels, 256, 256
   view_angle: 16 #in degrees, horizontal view angle
   origin: [0,0]
   min_angle: 0.001 #in degrees, minimal eccentricity
@@ -59,7 +59,7 @@ brightness_saturation:
 
 # Stimulation threshold
 thresholding:
-  use_threshold: True
+  use_threshold: False
   rheobase: 23.9e-6 # The minimal current (Ampere) for infinite stimulation duration. Is used as the constant leak current.
   activation_threshold: 9.141886000943878e-08 # Threshold of tissue activation for the perception of phosphenes
   activation_threshold_sd: 6.715877869833961e-08 # Standard deviation of the tissue activation threshold (for random initialization)

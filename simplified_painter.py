@@ -15,7 +15,7 @@ from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
 import config
 import sketch_utils as utils
 import PIL
-from scipy.ndimage.filters import gaussian_filter
+from scipy.ndimage import gaussian_filter
 from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
 from torchvision import transforms
@@ -46,16 +46,19 @@ class Phosphene_model(nn.Module):
         self.saliency_clip_model = args.saliency_clip_model
         self.text_target = args.text_target
 
-        self.stn = PhospheneTransformerNet(size=self.canvas_width)  # Spatial Transformer Network
+        self.stn = PhospheneTransformerNet(size=self.canvas_width, args=self.args)  # Spatial Transformer Network
         self.dynaphos = dynaphos  # Dynaphos
 
         self.phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(self.params,
                                                                                              self.num_phosphenes)
         self.simulator = PhospheneSimulator(self.params, self.phosphene_coords)
 
+        self.cached_attention_map = None
+        self.cached_clip_saliency_map = None
+
     def get_clip_saliency_map(self, args, target_im):
         clip_model, preprocess = clip.load(self.saliency_clip_model, device=self.device,
-                                                     jit=False)  # CLIP model
+                                           jit=False)  # CLIP model
         clip_model.eval().to(self.device)
 
         data_transforms = transforms.Compose([
@@ -69,40 +72,67 @@ class Phosphene_model(nn.Module):
                                   device=args.device)  # Make
         # attention map using the interpret method
 
+        del clip_model  # Essential, otherwise CLIP is included in the model parameters
+
         attn_map = (attention_map - attention_map.min()) / (
                 attention_map.max() - attention_map.min())  # Normalization of
         # attention map
 
         xdog = XDoG_()  # Make instance of XDoG
-        im_xdog = xdog(image_input_clip[0].permute(1, 2, 0).cpu().detach().numpy(), k=10)
-        intersec_map = (1 - im_xdog) * attn_map  # Multiplication of attention map and edge map
+
+
+        # Then apply XDoG and combine
+        im_xdog = xdog(image_input_clip[0].permute(1, 2, 0).cpu().numpy(), k=10)
+        intersec_map = (1-im_xdog) * attn_map  # Multiplication of attention map and edge map
+        # intersec_map = im_xdog * attn_map
 
         clip_saliency_map = np.copy(intersec_map)
         clip_saliency_map[intersec_map > 0] = softmax(intersec_map[intersec_map > 0],
-                                                      tau=args.softmax_temp)
+                                                      tau=args.softmax_temp) #see if this is necessary too
 
-        del clip_model
+        # PLOT TO SEE WHAT SALIENCY MAP LOOKS LIKE TO SEE WHERE OUR SALIENT REGIONS ARE
+
+        # may have to turn it into a tensor too.
+        clip_saliency_map = torch.Tensor(clip_saliency_map) / clip_saliency_map.max()
+
+        # clip_saliency_map = torch.Tensor(clip_saliency_map)
+        clip_saliency_map.requires_grad = True
 
         return attention_map, clip_saliency_map
 
-    def forward(self, target_im, args):
-        #attention_map, clip_saliency_map = self.get_clip_saliency_map(args, target_im)  # These are good
-        #clip_saliency_map = torch.Tensor(clip_saliency_map) / clip_saliency_map.max()
-        #clip_saliency_map.requires_grad = True
-        clip_saliency_map = torch.rand(size=(224, 224), requires_grad=True)
-        # Put attention map in stn to get inds
-        phosphene_placement_map = self.stn(clip_saliency_map.unsqueeze(0).unsqueeze(0)) #TODO here it becomes nan
+    def forward(self, target_im, args, refresh_maps=False):
+
+        if self.cached_clip_saliency_map is None or refresh_maps:
+            self.cached_attention_map, self.cached_clip_saliency_map = self.get_clip_saliency_map(args, target_im)
+
+            # Use self.cached_clip_saliency_map in the forward process
+        phosphene_placement_map = self.stn(self.cached_clip_saliency_map.unsqueeze(0).unsqueeze(0))
+
+        # attention_map, clip_saliency_map = self.get_clip_saliency_map(args, target_im)  # These are good
+        # # clip_saliency_map = torch.Tensor(clip_saliency_map) / clip_saliency_map.max()
+        # # # clip_saliency_map = torch.Tensor(clip_saliency_map)
+        # # clip_saliency_map.requires_grad = True
+        #
+        # # clip_saliency_map = torch.rand(size=(224, 224), requires_grad=True)
+        #
+        # # Put attention map in stn to get phosphene placement map
+        # phosphene_placement_map = self.stn(clip_saliency_map.unsqueeze(0).unsqueeze(0))
         # phosphene_placement_map = (phosphene_placement_map / phosphene_placement_map.max())
 
         phosphene_placement_map = normalized_rescaling(phosphene_placement_map)
         # phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map)
-        # phosphene_placement_map = phosphene_placement_map.detach()  # Otherwise the loss.backward() does not work
 
         self.simulator.reset()
 
-        # do stn params actually change from an iteration to the next?
-        # to try: remove dynaphos altogether and just output (224, 224) from stn
         phosphene_im = self.simulator(phosphene_placement_map)
+
+        # Find the maximum value across the phosphene image.
+        # max_value = phosphene_im.max()
+        #
+        # # Ensure that all non-zero phosphenes have the same intensity, based on the brightest one.
+        # # This operation preserves the shape of phosphenes but sets all non-zero intensities to the maximum found.
+        # phosphene_im = torch.where(phosphene_im > phosphene_im.min(), max_value, phosphene_im) # TODO this gives a very rough image
+        # but it is just for a proof of principle
 
         if self.constrain:
             original_phosphenes_sum = phosphene_im.sum().item()
@@ -112,9 +142,14 @@ class Phosphene_model(nn.Module):
 
         # plot_init_phosphenes(phosphenes)
 
+        # min_value = 0.1  # Set the minimum value to make the pixels visible
+
+        # Apply conditional operation to set a minimum value for non-zero pixels in phosphene_im
+        # phosphene_im = torch.where(phosphene_im > 0, torch.maximum(phosphene_im, torch.tensor(min_value)), phosphene_im)
+
         phosphene_im = phosphene_im.unsqueeze(0)
         phosphene_im = phosphene_im.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
-        phosphene_im = phosphene_im.permute(0, 1, 2, 3)#.to(self.device)  # NHW -> NHW
+        phosphene_im = phosphene_im.permute(0, 1, 2, 3)  # .to(self.device)  # NHW -> NHW
 
         return phosphene_im
 
@@ -128,92 +163,122 @@ class Phosphene_model(nn.Module):
 
 
 class PhospheneTransformerNet(nn.Module):
-    def __init__(self, size):
+    def __init__(self, size, args):
         super(PhospheneTransformerNet, self).__init__()
         self.size = size
-        # Define each layer separately to allow for intermediate checks
-        self.conv1 = nn.Conv2d(1, 8, kernel_size=7)
-        self.pool1 = nn.MaxPool2d(2, stride=2)
-        self.relu1 = nn.ReLU(True)
-        self.conv2 = nn.Conv2d(8, 10, kernel_size=5)
-        self.pool2 = nn.MaxPool2d(2, stride=2)
-        self.relu2 = nn.ReLU(True)
-        # Linear layer
-        self.fc_loc = nn.Linear(10 * 52 * 52, 1024)
+        self.num_phosphenes = args.num_phosphenes
+        self.localization = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=7, padding=3),
+            nn.ELU(True),  # Softer non-linearity
+            nn.AvgPool2d(2, stride=2),  # Gentle pooling
+            nn.Conv2d(8, 10, kernel_size=5, padding=2),
+            nn.ELU(True),  # Softer non-linearity
+            nn.AvgPool2d(2, stride=2)  # Gentle pooling
+        )
+        # Assuming size is the dimension of the input image, adjust based on actual input size
+        # Pooling twice with stride 2 reduces each dimension by a factor of 4
+        reduced_dim = size // 4
+        self.fc_loc = nn.Sequential(
+            nn.Linear(10 * reduced_dim * reduced_dim, self.num_phosphenes)
+        )
 
-        # Initialize weights
         self._init_weights()
 
     def _init_weights(self):
-        # Initialize Convolutional layers with Kaiming normalization
-        for conv in [self.conv1, self.conv2]:
-            init.kaiming_uniform(conv.weight, mode='fan_out', nonlinearity='relu')
-            if conv.bias is not None:
-                init.constant_(conv.bias, 0)
+        # Initialize with identity-like structures where possible
+        for layer in self.localization:
+            if isinstance(layer, nn.Conv2d):
+                init.constant_(layer.weight, 0)  # Set all weights to zero
+                center = tuple(map(lambda x: x // 2, layer.kernel_size))
+                for i in range(layer.out_channels):
+                    for j in range(layer.in_channels):
+                        layer.weight.data[i, j, center[0], center[1]] = 1  # Set center weight to 1
 
-        # Initialize Fully Connected layer with Xavier initialization
-        init.xavier_normal_(self.fc_loc.weight)
-        init.constant_(self.fc_loc.bias, 0)
+                if layer.bias is not None:
+                    init.constant_(layer.bias, 0)
+
+        # Fully connected layers initialized more traditionally but consider identity where possible
+        for layer in self.fc_loc:
+            if isinstance(layer, nn.Linear):
+                identity_size = min(layer.weight.shape[0], layer.weight.shape[1])
+                init.constant_(layer.weight, 0)
+                with torch.no_grad():
+                    for i in range(identity_size):
+                        layer.weight[i, i] = 1
+                init.constant_(layer.bias, 0)
 
     def forward(self, x):
-        x = self.conv1(x)
-        assert not torch.isnan(x).any(), 'NaN detected after conv1'
+        xs = self.localization(x)
+        xs = torch.flatten(xs, start_dim=1)
+        theta = self.fc_loc(xs)
+        return theta
 
-        x = self.pool1(x)
-        assert not torch.isnan(x).any(), 'NaN detected after pool1'
 
-        x = self.relu1(x)
-        assert not torch.isnan(x).any(), 'NaN detected after relu1'
+# class PhospheneTransformerNet(nn.Module):
+#     def __init__(self, size, args):
+#         super(PhospheneTransformerNet, self).__init__()
+#         self.size = size
+#         self.num_phosphenes = args.num_phosphenes
+#         # Using Sequential for compactness
+#         self.localization = nn.Sequential(
+#             nn.Conv2d(1, 8, kernel_size=7),
+#             nn.MaxPool2d(2, stride=2), #stride =2
+#             nn.ReLU(True),
+#             nn.Conv2d(8, 10, kernel_size=5),
+#             nn.MaxPool2d(2, stride=2), #stride =2
+#             nn.ReLU(True)
+#         )
+#         # Fully connected layer
+#         self.fc_loc = nn.Sequential(
+#             nn.Linear(10 * 52 * 52, self.num_phosphenes))  # change last number to number of phosphenes
+#
+#         # Initialize weights manually
+#         self._init_weights()
+#
+#     def _init_weights(self):
+#         # Manually initialize weights for convolutional layers within Sequential
+#         for layer in self.localization:
+#             if isinstance(layer, nn.Conv2d):
+#                 init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
+#                 if layer.bias is not None:
+#                     init.constant_(layer.bias, 0)
+#
+#         # Manually initialize weights for the fully connected layer
+#         for layer in self.fc_loc:
+#             if isinstance(layer, nn.Linear):
+#                 init.xavier_normal_(layer.weight)
+#                 init.constant_(layer.bias, 0)
+#
+# #
+#     def forward(self, x):
+#         xs = self.localization(x)
+#         xs = torch.flatten(xs, start_dim=1)
+#
+#         theta = self.fc_loc(xs)
+#
+#         return theta
 
-        x = self.conv2(x)
-        assert not torch.isnan(x).any(), 'NaN detected after conv2'
 
-        x = self.pool2(x)
-        assert not torch.isnan(x).any(), 'NaN detected after pool2'
+# def forward(self, x):
+#     xs = self.localization(x)
+#     # Ensure xs is correctly reshaped for the fully connected layers
+#     # The reshaping depends on the output size of your localization layers
+#     num_features = 10 * 52 * 52
+#     xs = xs.view(-1, num_features)  # num_features needs to be calculated based on the STN design
+#     theta = self.fc_loc(xs)
+#     theta = F.softmax(theta)
+#     #theta = theta.view(224, 224)
+#     theta = theta.view(32, 32)
+#     # theta = (theta - theta.min()) / (theta.max() - theta.min())
 
-        x = self.relu2(x)
-        assert not torch.isnan(x).any(), 'NaN detected after relu2'
-
-        # Flatten the output for the fully connected layer
-        x = torch.flatten(x, 1)
-        assert not torch.isnan(x).any(), 'NaN detected after flattening'
-
-        x = self.fc_loc(x)
-        assert not torch.isnan(x).any(), 'NaN detected after fc_loc'
-
-        return x
-
-    # def __init__(self, size):
-    #     super(PhospheneTransformerNet, self).__init__()
-    #     self.size = size
-    #     self.localization = nn.Sequential(nn.Conv2d(1, 8, kernel_size=7),
-    #     nn.MaxPool2d(2, stride=2),
-    #     nn.ReLU(True),
-    #     nn.Conv2d(8, 10, kernel_size=5),
-    #     nn.MaxPool2d(2, stride=2),
-    #     nn.ReLU(True))
-    #     self.fc_loc = nn.Sequential(nn.Linear(10*52*52, 1024))
-
-    # def forward(self, x):
-    #     xs = self.localization(x)
-    #     # Ensure xs is correctly reshaped for the fully connected layers
-    #     # The reshaping depends on the output size of your localization layers
-    #     num_features = 10 * 52 * 52
-    #     xs = xs.view(-1, num_features)  # num_features needs to be calculated based on the STN design
-    #     theta = self.fc_loc(xs)
-    #     theta = F.softmax(theta)
-    #     #theta = theta.view(224, 224)
-    #     theta = theta.view(32, 32)
-    #     # theta = (theta - theta.min()) / (theta.max() - theta.min())
-    #
-    #     return theta
+# return theta
 
 
 # -------------------------
 # Utility functions
 # -------------------------
 
-def normalized_rescaling(img, stimulus_scale=100.e-6):
+def normalized_rescaling(img, stimulus_scale=1000e-6):  # 100e-6
     """Normalize <img> and rescale the pixel intensities in the range [0, <stimulus_scale>].
     The output image represents the stimulation intensity map.
     param stimulus_scale: the stimulation amplitude corresponding to the highest-valued pixel.
@@ -312,13 +377,13 @@ def get_target_and_mask(args, target_image_path):
 
 def interpret(image, texts, model, device):
     images = image.repeat(1, 1, 1, 1)
-    res = model.encode_image(images)  # TODO here is where it goes wrong, it gives dtype=torch.float16
+    res = model.encode_image(images)
     model.zero_grad()
     image_attn_blocks = list(dict(
-        model.visual.transformer.resblocks.named_children()).values())  # TODO i think here with the generation of the image attn blocks it goes wrong
+        model.visual.transformer.resblocks.named_children()).values())
     num_tokens = image_attn_blocks[0].attn_probs.shape[-1]
     R = torch.eye(num_tokens, num_tokens, dtype=image_attn_blocks[0].attn_probs.dtype).to(device)
-    R = R.unsqueeze(0).expand(1, num_tokens, num_tokens)  # TODO here as well it has the dtype torch.float16
+    R = R.unsqueeze(0).expand(1, num_tokens, num_tokens)
     cams = []  # there are 12 attention blocks
     for i, blk in enumerate(image_attn_blocks):
         cam = blk.attn_probs.detach()  # attn_probs shape is 12, 50, 50
@@ -335,7 +400,7 @@ def interpret(image, texts, model, device):
     image_relevance = image_relevance.reshape(1, 1, 7, 7)
     image_relevance = image_relevance.to(torch.float32)
     image_relevance = torch.nn.functional.interpolate(image_relevance, size=224, mode='bicubic')
-    image_relevance = image_relevance.reshape(224, 224).data.cpu().numpy().astype(np.float32)
+    # image_relevance = image_relevance.reshape(224, 224).data.cpu().numpy().astype(np.float32)
     image_relevance = (image_relevance - image_relevance.min()) / (image_relevance.max() - image_relevance.min())
     return image_relevance
 
@@ -348,10 +413,10 @@ def softmax(x, tau=0.2):
 class XDoG_(object):
     def __init__(self):
         super(XDoG_, self).__init__()
-        self.gamma = 0.98
-        self.phi = 200
+        self.gamma = 0.98 #0.98
+        self.phi = 200 #200
         self.eps = -0.1
-        self.sigma = 0.8
+        self.sigma = 0.8 #0.8
         self.binarize = True
 
     def __call__(self, im, k=10):
