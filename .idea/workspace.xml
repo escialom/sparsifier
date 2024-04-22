@@ -4,15 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="581c47d4-0c03-4a4d-8315-42e8d29b896a" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/params.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/config/params.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dynaphos/simulator.py" beforeDir="false" afterPath="$PROJECT_DIR$/dynaphos/simulator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main_training.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_training.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/loss.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/loss.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/simplified_painter.py" beforeDir="false" afterPath="$PROJECT_DIR$/simplified_painter.py" afterDir="false" />
-    </list>
+    <list default="true" id="581c47d4-0c03-4a4d-8315-42e8d29b896a" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -143,7 +135,7 @@
       <workItem from="1712911567446" duration="989000" />
       <workItem from="1712912686159" duration="12255000" />
       <workItem from="1713168435709" duration="50032000" />
-      <workItem from="1713793664265" duration="431000" />
+      <workItem from="1713793664265" duration="732000" />
     </task>
     <servers />
   </component>
