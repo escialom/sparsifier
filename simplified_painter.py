@@ -167,51 +167,99 @@ class PhospheneTransformerNet(nn.Module):
         super(PhospheneTransformerNet, self).__init__()
         self.size = size
         self.num_phosphenes = args.num_phosphenes
+
         self.localization = nn.Sequential(
             nn.Conv2d(1, 8, kernel_size=7, padding=3),
-            nn.ELU(True),  # Softer non-linearity
-            nn.AvgPool2d(2, stride=2),  # Gentle pooling
+            nn.ReLU(True),
             nn.Conv2d(8, 10, kernel_size=5, padding=2),
-            nn.ELU(True),  # Softer non-linearity
-            nn.AvgPool2d(2, stride=2)  # Gentle pooling
+            nn.ReLU(True),
+            nn.Conv2d(10, 10, kernel_size=3, padding=1),
+            nn.ReLU(True),
+            nn.AdaptiveAvgPool2d((size // 4, size // 4))
         )
-        # Assuming size is the dimension of the input image, adjust based on actual input size
-        # Pooling twice with stride 2 reduces each dimension by a factor of 4
-        reduced_dim = size // 4
+
+        # Reducing the number of fully connected layers
         self.fc_loc = nn.Sequential(
-            nn.Linear(10 * reduced_dim * reduced_dim, self.num_phosphenes)
+            nn.Linear(10 * (size // 4) * (size // 4), self.num_phosphenes),
+            nn.ReLU(True)
         )
 
         self._init_weights()
 
     def _init_weights(self):
-        # Initialize with identity-like structures where possible
         for layer in self.localization:
             if isinstance(layer, nn.Conv2d):
-                init.constant_(layer.weight, 0)  # Set all weights to zero
-                center = tuple(map(lambda x: x // 2, layer.kernel_size))
-                for i in range(layer.out_channels):
-                    for j in range(layer.in_channels):
-                        layer.weight.data[i, j, center[0], center[1]] = 1  # Set center weight to 1
-
+                nn.init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
                 if layer.bias is not None:
-                    init.constant_(layer.bias, 0)
+                    nn.init.constant_(layer.bias, 0)
 
-        # Fully connected layers initialized more traditionally but consider identity where possible
         for layer in self.fc_loc:
             if isinstance(layer, nn.Linear):
-                identity_size = min(layer.weight.shape[0], layer.weight.shape[1])
-                init.constant_(layer.weight, 0)
-                with torch.no_grad():
-                    for i in range(identity_size):
-                        layer.weight[i, i] = 1
-                init.constant_(layer.bias, 0)
+                nn.init.xavier_normal_(layer.weight)
+                nn.init.constant_(layer.bias, 0)
 
     def forward(self, x):
         xs = self.localization(x)
         xs = torch.flatten(xs, start_dim=1)
         theta = self.fc_loc(xs)
         return theta
+
+
+# class PhospheneTransformerNet(nn.Module):
+#     def __init__(self, size, args):
+#         super(PhospheneTransformerNet, self).__init__()
+#         self.size = size
+#         self.num_phosphenes = args.num_phosphenes
+#         self.localization = nn.Sequential(
+#             nn.Conv2d(1, 8, kernel_size=7, padding=3),
+#             nn.ELU(True),
+#             nn.AvgPool2d(2, stride=2),
+#             nn.Conv2d(8, 10, kernel_size=5, padding=2),
+#             nn.ELU(True),
+#             nn.AvgPool2d(2, stride=2)
+#         )
+#         reduced_dim = size // 4
+#         self.fc_loc = nn.Sequential(
+#             nn.Linear(10 * reduced_dim * reduced_dim, self.num_phosphenes)
+#         )
+#         self._init_weights()
+#
+#     def gaussian_blob_init(self, layer, sigma=1.0):
+#         n, c, h, w = layer.weight.shape
+#         y_coord = np.linspace(-int(h/2), int(h/2), h)
+#         x_coord = np.linspace(-int(w/2), int(w/2), w)
+#         x, y = np.meshgrid(x_coord, y_coord)
+#         gaussian = np.exp(-(x**2 + y**2) / (2 * sigma**2))
+#         gaussian = gaussian / np.sum(gaussian)  # Normalize to maintain weight scale
+#
+#         for i in range(n):
+#             for j in range(c):
+#                 layer.weight.data[i, j] = torch.FloatTensor(gaussian)
+#
+#         if layer.bias is not None:
+#             init.constant_(layer.bias, 0)
+#
+#     def _init_weights(self):
+#         # Initialize convolutional layers with Gaussian blobs
+#         for layer in self.localization:
+#             if isinstance(layer, nn.Conv2d):
+#                 self.gaussian_blob_init(layer, sigma=1.5)  # Adjust sigma as needed
+#
+#         # Fully connected layers initialized more traditionally
+#         for layer in self.fc_loc:
+#             if isinstance(layer, nn.Linear):
+#                 identity_size = min(layer.weight.shape[0], layer.weight.shape[1])
+#                 init.constant_(layer.weight, 0)
+#                 with torch.no_grad():
+#                     for i in range(identity_size):
+#                         layer.weight[i, i] = 1
+#                 init.constant_(layer.bias, 0)
+#
+#     def forward(self, x):
+#         xs = self.localization(x)
+#         xs = torch.flatten(xs, start_dim=1)
+#         theta = self.fc_loc(xs)
+#         return theta
 
 
 # class PhospheneTransformerNet(nn.Module):
@@ -379,8 +427,7 @@ def interpret(image, texts, model, device):
     images = image.repeat(1, 1, 1, 1)
     res = model.encode_image(images)
     model.zero_grad()
-    image_attn_blocks = list(dict(
-        model.visual.transformer.resblocks.named_children()).values())
+    image_attn_blocks = list(dict(model.visual.transformer.resblocks.named_children()).values())
     num_tokens = image_attn_blocks[0].attn_probs.shape[-1]
     R = torch.eye(num_tokens, num_tokens, dtype=image_attn_blocks[0].attn_probs.dtype).to(device)
     R = R.unsqueeze(0).expand(1, num_tokens, num_tokens)
@@ -398,11 +445,11 @@ def interpret(image, texts, model, device):
     cams_avg = cams_avg[:, 0, 1:]  # 12, 1, 49
     image_relevance = cams_avg.mean(dim=0).unsqueeze(0)
     image_relevance = image_relevance.reshape(1, 1, 7, 7)
-    image_relevance = image_relevance.to(torch.float32)
     image_relevance = torch.nn.functional.interpolate(image_relevance, size=224, mode='bicubic')
-    # image_relevance = image_relevance.reshape(224, 224).data.cpu().numpy().astype(np.float32)
+    image_relevance = image_relevance.reshape(224, 224).data.cpu().numpy().astype(np.float32)
     image_relevance = (image_relevance - image_relevance.min()) / (image_relevance.max() - image_relevance.min())
     return image_relevance
+
 
 
 def softmax(x, tau=0.2):

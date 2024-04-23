@@ -505,7 +505,7 @@ class GaussianSimulator:
 
         # Assuming `supra_threshold`, `self.brightness.get()` and `self._zero` are predefined as per your context.
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
-        values, indices = torch.topk(intensity, k=1000, dim=0)
+        values, indices = torch.topk(intensity, k=500, dim=0)
         zero_mask = torch.zeros_like(intensity)
         # Use 'scatter_' to set the top k positions to their corresponding values
         zero_mask.scatter_(dim=0, index=indices, src=values)

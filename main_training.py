@@ -73,7 +73,7 @@ def main(args):
         for image_path in image_paths:
 
             target_im, mask = get_target_and_mask(args, target_image_path=image_path)
-            target_im[target_im == 1.] = 0.
+
 
             if not args.display:
                 epoch_range.refresh()
@@ -82,6 +82,8 @@ def main(args):
 
             phosphene_im = phosphene_model(target_im, args)
             phosphene_im.to(args.device)
+
+            target_im[target_im == 1.] = 0.
 
             losses_dict = loss_func(phosphene_im, target_im, phosphene_model.parameters(), counter,
                                     optimizer)
