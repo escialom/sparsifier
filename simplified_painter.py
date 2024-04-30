@@ -20,6 +20,7 @@ from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
 from torchvision import transforms
 from PIL import Image
+from dynaphos.simulator import ActivationThreshold
 
 
 # -------------------------
@@ -69,33 +70,21 @@ class Phosphene_model(nn.Module):
         text_input_clip = clip.tokenize([self.text_target]).to(args.device)  # Defining text input for CLIP
 
         attention_map = interpret(image_input_clip, text_input_clip, clip_model,
-                                  device=args.device)  # Make
-        # attention map using the interpret method
+                                  device=args.device)
 
         del clip_model  # Essential, otherwise CLIP is included in the model parameters
 
-        attn_map = (attention_map - attention_map.min()) / (
-                attention_map.max() - attention_map.min())  # Normalization of
-        # attention map
+        attn_map = (attention_map - attention_map.min()) / (attention_map.max() - attention_map.min())
 
-        xdog = XDoG_()  # Make instance of XDoG
-
-
-        # Then apply XDoG and combine
+        xdog = XDoG_()
         im_xdog = xdog(image_input_clip[0].permute(1, 2, 0).cpu().numpy(), k=10)
-        intersec_map = (1-im_xdog) * attn_map  # Multiplication of attention map and edge map
-        # intersec_map = im_xdog * attn_map
+        intersec_map = (1 - im_xdog) * attn_map  # Multiplication of attention map and edge map
 
         clip_saliency_map = np.copy(intersec_map)
         clip_saliency_map[intersec_map > 0] = softmax(intersec_map[intersec_map > 0],
-                                                      tau=args.softmax_temp) #see if this is necessary too
+                                                      tau=args.softmax_temp)
 
-        # PLOT TO SEE WHAT SALIENCY MAP LOOKS LIKE TO SEE WHERE OUR SALIENT REGIONS ARE
-
-        # may have to turn it into a tensor too.
         clip_saliency_map = torch.Tensor(clip_saliency_map) / clip_saliency_map.max()
-
-        # clip_saliency_map = torch.Tensor(clip_saliency_map)
         clip_saliency_map.requires_grad = True
 
         return attention_map, clip_saliency_map
@@ -106,33 +95,22 @@ class Phosphene_model(nn.Module):
             self.cached_attention_map, self.cached_clip_saliency_map = self.get_clip_saliency_map(args, target_im)
 
             # Use self.cached_clip_saliency_map in the forward process
-        phosphene_placement_map = self.stn(self.cached_clip_saliency_map.unsqueeze(0).unsqueeze(0))
+        phosphene_placement_map = self.stn(
+            self.cached_clip_saliency_map.unsqueeze(0).unsqueeze(0))  # todo Check from here
 
         # attention_map, clip_saliency_map = self.get_clip_saliency_map(args, target_im)  # These are good
-        # # clip_saliency_map = torch.Tensor(clip_saliency_map) / clip_saliency_map.max()
-        # # # clip_saliency_map = torch.Tensor(clip_saliency_map)
-        # # clip_saliency_map.requires_grad = True
-        #
-        # # clip_saliency_map = torch.rand(size=(224, 224), requires_grad=True)
-        #
+
         # # Put attention map in stn to get phosphene placement map
         # phosphene_placement_map = self.stn(clip_saliency_map.unsqueeze(0).unsqueeze(0))
         # phosphene_placement_map = (phosphene_placement_map / phosphene_placement_map.max())
 
-        phosphene_placement_map = normalized_rescaling(phosphene_placement_map)
-        # phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map)
+        phosphene_placement_map = normalized_rescaling(phosphene_placement_map)  # this is amplitudes
 
+        phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map,
+                                                                 rescale=False)  # if it is an image
         self.simulator.reset()
 
         phosphene_im = self.simulator(phosphene_placement_map)
-
-        # Find the maximum value across the phosphene image.
-        # max_value = phosphene_im.max()
-        #
-        # # Ensure that all non-zero phosphenes have the same intensity, based on the brightest one.
-        # # This operation preserves the shape of phosphenes but sets all non-zero intensities to the maximum found.
-        # phosphene_im = torch.where(phosphene_im > phosphene_im.min(), max_value, phosphene_im) # TODO this gives a very rough image
-        # but it is just for a proof of principle
 
         if self.constrain:
             original_phosphenes_sum = phosphene_im.sum().item()
@@ -140,16 +118,9 @@ class Phosphene_model(nn.Module):
             adjusted_phosphenes = randomly_deactivate_phosphenes(phosphene_im.clone(), max_total_current)
             phosphene_im = adjusted_phosphenes
 
-        # plot_init_phosphenes(phosphenes)
-
-        # min_value = 0.1  # Set the minimum value to make the pixels visible
-
-        # Apply conditional operation to set a minimum value for non-zero pixels in phosphene_im
-        # phosphene_im = torch.where(phosphene_im > 0, torch.maximum(phosphene_im, torch.tensor(min_value)), phosphene_im)
-
         phosphene_im = phosphene_im.unsqueeze(0)
         phosphene_im = phosphene_im.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
-        phosphene_im = phosphene_im.permute(0, 1, 2, 3)  # .to(self.device)  # NHW -> NHW
+        phosphene_im = phosphene_im.permute(0, 1, 2, 3)
 
         return phosphene_im
 
@@ -162,164 +133,80 @@ class Phosphene_model(nn.Module):
         img_pil.save('{}/{}.png'.format(output_dir, name), format='PNG', size=canvas_size)
 
 
+# STN for initialization with saliency map
 class PhospheneTransformerNet(nn.Module):
     def __init__(self, size, args):
         super(PhospheneTransformerNet, self).__init__()
         self.size = size
         self.num_phosphenes = args.num_phosphenes
-
+        # Using Sequential for compactness
         self.localization = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=7, padding=3),
-            nn.ReLU(True),
-            nn.Conv2d(8, 10, kernel_size=5, padding=2),
-            nn.ReLU(True),
-            nn.Conv2d(10, 10, kernel_size=3, padding=1),
-            nn.ReLU(True),
-            nn.AdaptiveAvgPool2d((size // 4, size // 4))
+            nn.Conv2d(1, 32, 3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 3, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 1, 3, stride=1, padding=0),
+            nn.ReLU()
         )
 
-        # Reducing the number of fully connected layers
-        self.fc_loc = nn.Sequential(
-            nn.Linear(10 * (size // 4) * (size // 4), self.num_phosphenes),
-            nn.ReLU(True)
-        )
+        self.conv_padding = nn.Sequential(
+            nn.Upsample((224, 224), mode='nearest'))
 
-        self._init_weights()
-
-    def _init_weights(self):
-        for layer in self.localization:
-            if isinstance(layer, nn.Conv2d):
-                nn.init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
-                if layer.bias is not None:
-                    nn.init.constant_(layer.bias, 0)
-
-        for layer in self.fc_loc:
-            if isinstance(layer, nn.Linear):
-                nn.init.xavier_normal_(layer.weight)
-                nn.init.constant_(layer.bias, 0)
 
     def forward(self, x):
         xs = self.localization(x)
-        xs = torch.flatten(xs, start_dim=1)
-        theta = self.fc_loc(xs)
+        # xs = torch.flatten(xs, start_dim=1)
+
+        # theta = xs.view(1, 32, 32)
+        theta = self.conv_padding(xs)
+        theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
+        theta = F.sigmoid(theta)
+
         return theta
 
 
+# Original where you get a 1D stimulation tensor
 # class PhospheneTransformerNet(nn.Module):
 #     def __init__(self, size, args):
 #         super(PhospheneTransformerNet, self).__init__()
 #         self.size = size
 #         self.num_phosphenes = args.num_phosphenes
+#
 #         self.localization = nn.Sequential(
 #             nn.Conv2d(1, 8, kernel_size=7, padding=3),
-#             nn.ELU(True),
-#             nn.AvgPool2d(2, stride=2),
-#             nn.Conv2d(8, 10, kernel_size=5, padding=2),
-#             nn.ELU(True),
-#             nn.AvgPool2d(2, stride=2)
-#         )
-#         reduced_dim = size // 4
-#         self.fc_loc = nn.Sequential(
-#             nn.Linear(10 * reduced_dim * reduced_dim, self.num_phosphenes)
-#         )
-#         self._init_weights()
-#
-#     def gaussian_blob_init(self, layer, sigma=1.0):
-#         n, c, h, w = layer.weight.shape
-#         y_coord = np.linspace(-int(h/2), int(h/2), h)
-#         x_coord = np.linspace(-int(w/2), int(w/2), w)
-#         x, y = np.meshgrid(x_coord, y_coord)
-#         gaussian = np.exp(-(x**2 + y**2) / (2 * sigma**2))
-#         gaussian = gaussian / np.sum(gaussian)  # Normalize to maintain weight scale
-#
-#         for i in range(n):
-#             for j in range(c):
-#                 layer.weight.data[i, j] = torch.FloatTensor(gaussian)
-#
-#         if layer.bias is not None:
-#             init.constant_(layer.bias, 0)
-#
-#     def _init_weights(self):
-#         # Initialize convolutional layers with Gaussian blobs
-#         for layer in self.localization:
-#             if isinstance(layer, nn.Conv2d):
-#                 self.gaussian_blob_init(layer, sigma=1.5)  # Adjust sigma as needed
-#
-#         # Fully connected layers initialized more traditionally
-#         for layer in self.fc_loc:
-#             if isinstance(layer, nn.Linear):
-#                 identity_size = min(layer.weight.shape[0], layer.weight.shape[1])
-#                 init.constant_(layer.weight, 0)
-#                 with torch.no_grad():
-#                     for i in range(identity_size):
-#                         layer.weight[i, i] = 1
-#                 init.constant_(layer.bias, 0)
-#
-#     def forward(self, x):
-#         xs = self.localization(x)
-#         xs = torch.flatten(xs, start_dim=1)
-#         theta = self.fc_loc(xs)
-#         return theta
-
-
-# class PhospheneTransformerNet(nn.Module):
-#     def __init__(self, size, args):
-#         super(PhospheneTransformerNet, self).__init__()
-#         self.size = size
-#         self.num_phosphenes = args.num_phosphenes
-#         # Using Sequential for compactness
-#         self.localization = nn.Sequential(
-#             nn.Conv2d(1, 8, kernel_size=7),
-#             nn.MaxPool2d(2, stride=2), #stride =2
 #             nn.ReLU(True),
-#             nn.Conv2d(8, 10, kernel_size=5),
-#             nn.MaxPool2d(2, stride=2), #stride =2
+#             nn.Conv2d(8, 10, kernel_size=5, padding=2),
+#             nn.ReLU(True),
+#             nn.Conv2d(10, 10, kernel_size=3, padding=1),
+#             nn.ReLU(True),
+#             nn.AdaptiveAvgPool2d((size // 4, size // 4))
+#         )
+#
+#         # Reducing the number of fully connected layers
+#         self.fc_loc = nn.Sequential(
+#             nn.Linear(10 * (size // 4) * (size // 4), self.num_phosphenes),
 #             nn.ReLU(True)
 #         )
-#         # Fully connected layer
-#         self.fc_loc = nn.Sequential(
-#             nn.Linear(10 * 52 * 52, self.num_phosphenes))  # change last number to number of phosphenes
 #
-#         # Initialize weights manually
 #         self._init_weights()
 #
 #     def _init_weights(self):
-#         # Manually initialize weights for convolutional layers within Sequential
 #         for layer in self.localization:
 #             if isinstance(layer, nn.Conv2d):
-#                 init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
+#                 nn.init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
 #                 if layer.bias is not None:
-#                     init.constant_(layer.bias, 0)
+#                     nn.init.constant_(layer.bias, 0)
 #
-#         # Manually initialize weights for the fully connected layer
 #         for layer in self.fc_loc:
 #             if isinstance(layer, nn.Linear):
-#                 init.xavier_normal_(layer.weight)
-#                 init.constant_(layer.bias, 0)
+#                 nn.init.xavier_normal_(layer.weight)
+#                 nn.init.constant_(layer.bias, 0)
 #
-# #
 #     def forward(self, x):
 #         xs = self.localization(x)
 #         xs = torch.flatten(xs, start_dim=1)
-#
 #         theta = self.fc_loc(xs)
-#
 #         return theta
-
-
-# def forward(self, x):
-#     xs = self.localization(x)
-#     # Ensure xs is correctly reshaped for the fully connected layers
-#     # The reshaping depends on the output size of your localization layers
-#     num_features = 10 * 52 * 52
-#     xs = xs.view(-1, num_features)  # num_features needs to be calculated based on the STN design
-#     theta = self.fc_loc(xs)
-#     theta = F.softmax(theta)
-#     #theta = theta.view(224, 224)
-#     theta = theta.view(32, 32)
-#     # theta = (theta - theta.min()) / (theta.max() - theta.min())
-
-# return theta
 
 
 # -------------------------
@@ -451,7 +338,6 @@ def interpret(image, texts, model, device):
     return image_relevance
 
 
-
 def softmax(x, tau=0.2):
     e_x = np.exp(x / tau)
     return e_x / e_x.sum()
@@ -460,10 +346,10 @@ def softmax(x, tau=0.2):
 class XDoG_(object):
     def __init__(self):
         super(XDoG_, self).__init__()
-        self.gamma = 0.98 #0.98
-        self.phi = 200 #200
+        self.gamma = 0.98
+        self.phi = 200
         self.eps = -0.1
-        self.sigma = 0.8 #0.8
+        self.sigma = 0.8
         self.binarize = True
 
     def __call__(self, im, k=10):

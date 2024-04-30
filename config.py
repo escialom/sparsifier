@@ -86,7 +86,7 @@ def parse_arguments():
     # ======== phosphene params =========
     # =================================
     parser.add_argument("--num_phosphenes", type=int,
-                        default=1000,
+                        default=500,
                         help="number of phosphenes used to generate the image, this defines the level of density.")
     parser.add_argument('--patch_size', type=int, help='Size of each of the patches of phosphenes.', default=8)  # 10
     parser.add_argument('--phosphene_radius', type=int, help='Radius of the phosphene.', default=1.2)  # 1.5
@@ -96,7 +96,7 @@ def parse_arguments():
     parser.add_argument("--saliency_clip_model", type=str, default="ViT-B/32")
     parser.add_argument("--xdog_intersec", type=int, default=1)
     parser.add_argument("--mask_object_attention", type=int, default=0)
-    parser.add_argument("--softmax_temp", type=float, default=0.3) #0.3
+    parser.add_argument("--softmax_temp", type=float, default=0.3)  # 0.3
     parser.add_argument("--constrain", type=int, default=0)
     parser.add_argument("--percentage", type=int, default=100, help="Percentage of phosphenes that you want to keep")
 
@@ -110,7 +110,7 @@ def parse_arguments():
     parser.add_argument("--train_with_clip", type=int, default=0)
     parser.add_argument("--clip_weight", type=float, default=0)
     parser.add_argument("--start_clip", type=int, default=0)
-    parser.add_argument("--num_aug_clip", type=int, default=4) #4
+    parser.add_argument("--num_aug_clip", type=int, default=4)  # 4
     parser.add_argument("--include_target_in_aug", type=int, default=0)
     parser.add_argument("--augment_both", type=int, default=1,
                         help="if you want to apply the affine augmentation to both the sketch and image")
@@ -121,9 +121,9 @@ def parse_arguments():
     parser.add_argument("--clip_conv_loss", type=float, default=1)
     parser.add_argument("--clip_conv_loss_type", type=str, default="L2")
     parser.add_argument("--clip_conv_layer_weights",
-                        type=str, default="0,0,1.0,1.0,0") #0,0,1.0,1.0,0
+                        type=str, default="0,0,1.0,1.0,0")  # 0,0,1.0,1.0,0
     parser.add_argument("--clip_model_name", type=str, default="RN50")
-    parser.add_argument("--clip_fc_loss_weight", type=float, default=0.1) #0.1, 0.0 disables the semantic loss
+    parser.add_argument("--clip_fc_loss_weight", type=float, default=0.1)  # 0.1, 0.0 disables the semantic loss
     parser.add_argument("--clip_text_guide", type=float, default=0)
     parser.add_argument("--text_target", type=str, default="none")
 

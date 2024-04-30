@@ -88,7 +88,7 @@ class ActivationThreshold(State):
             self.state = self.to_tensor(activation_thresholds).clip(0, None)
         else:
             self.state = torch.zeros(self.shape, **self.data_kwargs)
-        # todo make it neat in params and change line to not zeros but lower than the minimum activation level
+
 
 
 class Trace(State):
@@ -304,6 +304,7 @@ class GaussianSimulator:
         y_coords = torch.reshape(self.to_tensor(y_coords), (-1, 1, 1))
 
         # x,y limits of the simulation, TODO these are their view limits
+        # res_x, res_y = [32, 32]
         res_x, res_y = self.params['run']['resolution']
         x_org, y_org = self.params['run']['origin']
         hemi_fov = self.params['run']['view_angle'] / 2
@@ -400,19 +401,9 @@ class GaussianSimulator:
         charge_per_s = torch.relu((amplitude - leak_current) *
                                   pulse_width * frequency)
 
-        first_term = amplitude- leak_current
-        print(amplitude.mean())
-        print(leak_current.mean())
-        # print(first_term.mean()) #This got smaller. So is it the amplitude or the leak current that changes then?
-        # print(torch.greater(first_term, 0).sum())
-
-        #In the first term it becomes 31
         self.effective_charge_per_second = charge_per_s
 
-        # print(torch.greater(self.trace.get(),0).sum())
-        # print(torch.greater(amplitude, 0).sum())
-        #
-        # print_stats('charge per second', charge_per_s)
+        print_stats('charge per second', charge_per_s)
 
         return charge_per_s
 
@@ -499,23 +490,41 @@ class GaussianSimulator:
         activation = self.gaussian_activation()
 
         # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
-        new_threshold = torch.full((1000, 1, 1), 0)
+        # new_threshold = torch.full((1000, 1, 1), 0)
 
-        supra_threshold = torch.greater(self.activation.get(), new_threshold) #self.threshold.get()
+        # Fetch and flatten activation and threshold tensors
+        activation_values = self.activation.get().flatten()  # Flattening to 1D
+        threshold_values = self.threshold.get().flatten()  # Flattening to 1D
 
-        # Assuming `supra_threshold`, `self.brightness.get()` and `self._zero` are predefined as per your context.
+        topk_values, topk_indices = torch.topk(activation_values, k=500) #TODO make param
+
+        # Create a zeroed tensor for activation values
+        zeroed_activation_values = torch.zeros_like(activation_values)
+
+        # Place top k values in the zeroed tensor
+        zeroed_activation_values.scatter_(0, topk_indices, topk_values)
+
+        # Ensure that top k activation values are greater than their corresponding thresholds
+        threshold_topk = threshold_values[topk_indices]  # Indexing to get corresponding thresholds
+        increase_mask = topk_values <= threshold_topk
+        topk_values[increase_mask] = threshold_topk[increase_mask] + 0.01  # Increment to be above threshold
+
+        # Place the adjusted top k values back into the zeroed activation tensor
+        zeroed_activation_values.scatter_(0, topk_indices, topk_values)
+
+        # Reshape back to original dimensions if necessary
+        zeroed_activation_values = zeroed_activation_values.view_as(self.activation.get())
+
+        # Calculate supra-threshold
+        supra_threshold = torch.greater(zeroed_activation_values, threshold_values.view_as(self.activation.get()))
+
+        # supra_threshold = torch.greater(self.activation.get(), self.threshold.get()) #new_threshold
+
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
-        values, indices = torch.topk(intensity, k=500, dim=0)
-        zero_mask = torch.zeros_like(intensity)
-        # Use 'scatter_' to set the top k positions to their corresponding values
-        zero_mask.scatter_(dim=0, index=indices, src=values)
-        # Now zero_mask contains top k values in their respective positions and 0 elsewhere
-        intensity = zero_mask
 
-        print(torch.greater(intensity, 0).sum())
+        print(f"Number of phosphenes: {torch.greater(intensity, 0).sum()}") #How many phosphenes are displayed
 
-        # Return phosphene image. TODO this is what the _render function should give in the end
-        return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1)
+        return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1) # Return phosphene image
 
 
     @property

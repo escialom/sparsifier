@@ -27,7 +27,7 @@ def plotting_loss(args):
     epochs = np.arange(len(loss_eval)) * 10  # Multiply each epoch index by 10
 
     plt.figure()
-    plt.plot(epochs, loss_eval, label='Loss over Epochs')  # Use the modified epoch indices
+    plt.plot(epochs, loss_eval, label='Loss over Epochs')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.title('Loss During Training')
@@ -35,8 +35,6 @@ def plotting_loss(args):
     plt.grid(True)
 
     plt.savefig(os.path.join(args.output_dir, "Loss over epochs"))
-
-    # Close the plot to free up memory
     plt.close()
 
 
@@ -87,7 +85,7 @@ def main(args):
 
             losses_dict = loss_func(phosphene_im, target_im, phosphene_model.parameters(), counter,
                                     optimizer)
-            #
+
             loss = sum(list(losses_dict.values()))
             # loss = my_real_super_secret_vip_loss_func(phosphene_im, target_im.detach())
             print(loss)
