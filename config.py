@@ -25,14 +25,14 @@ def parse_arguments():
     # ============ general ============
     # =================================
     abs_path = os.path.abspath(os.getcwd())
-    target = f"{abs_path}/target_images/camel.png"  # These lines gave wrong formatting
+    target = f"{abs_path}/target_images/rose.jpeg"  # These lines gave wrong formatting
     assert os.path.isfile(target), f"{target} does not exist!"
-    test_name = os.path.splitext("camel.png")[0]
+    test_name = os.path.splitext("rose.jpeg")[0]
     output_dir = f"{abs_path}/output_sketches/{test_name}/"  # this line gave wrong formatting
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    parser.add_argument("--target", default=f"{abs_path}/target_images/camel.png", help="target image path")
-    parser.add_argument("--target_file", type=str, default="camel.png",
+    parser.add_argument("--target", default=f"{abs_path}/target_images/rose.jpeg", help="target image path")
+    parser.add_argument("--target_file", type=str, default="rose.jpeg",
                         help="target image file, located in <target_images>")
     parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/",
                         help="directory to save the output images and loss")
@@ -86,7 +86,7 @@ def parse_arguments():
     # ======== phosphene params =========
     # =================================
     parser.add_argument("--num_phosphenes", type=int,
-                        default=500,
+                        default=1000,
                         help="number of phosphenes used to generate the image, this defines the level of density.")
     parser.add_argument('--patch_size', type=int, help='Size of each of the patches of phosphenes.', default=8)  # 10
     parser.add_argument('--phosphene_radius', type=int, help='Radius of the phosphene.', default=1.2)  # 1.5

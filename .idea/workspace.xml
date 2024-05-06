@@ -8,7 +8,6 @@
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dynaphos/config/params.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/dynaphos/config/params.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dynaphos/simulator.py" beforeDir="false" afterPath="$PROJECT_DIR$/dynaphos/simulator.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main_training.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_training.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/simplified_painter.py" beforeDir="false" afterPath="$PROJECT_DIR$/simplified_painter.py" afterDir="false" />
     </list>
@@ -143,7 +142,7 @@
       <workItem from="1712912686159" duration="12255000" />
       <workItem from="1713168435709" duration="50032000" />
       <workItem from="1713793664265" duration="732000" />
-      <workItem from="1713957459717" duration="23894000" />
+      <workItem from="1713957459717" duration="32075000" />
     </task>
     <servers />
   </component>
@@ -152,23 +151,6 @@
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/simplified_painter.py</url>
-          <line>112</line>
-          <option name="timeStamp" value="68" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/simplified_painter.py</url>
-          <line>106</line>
-          <option name="timeStamp" value="76" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/simplified_painter.py</url>
-          <line>160</line>
-          <option name="timeStamp" value="77" />
-        </line-breakpoint>
-      </breakpoints>
       <default-breakpoints>
         <breakpoint type="python-exception">
           <properties notifyOnTerminate="true" exception="BaseException">
@@ -194,6 +176,6 @@
     <SUITE FILE_PATH="coverage/sparsifier$bkabka.coverage" NAME="bkabka Coverage Results" MODIFIED="1713390927609" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$loss.coverage" NAME="loss Coverage Results" MODIFIED="1713364285097" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/models" />
     <SUITE FILE_PATH="coverage/sparsifier$painter_params.coverage" NAME="painter_params Coverage Results" MODIFIED="1709815215047" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/models" />
-    <SUITE FILE_PATH="coverage/sparsifier$main_training.coverage" NAME="main_training Coverage Results" MODIFIED="1714474178892" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/sparsifier$main_training.coverage" NAME="main_training Coverage Results" MODIFIED="1714898941337" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

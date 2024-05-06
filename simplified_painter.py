@@ -96,18 +96,12 @@ class Phosphene_model(nn.Module):
 
             # Use self.cached_clip_saliency_map in the forward process
         phosphene_placement_map = self.stn(
-            self.cached_clip_saliency_map.unsqueeze(0).unsqueeze(0))  # todo Check from here
+            self.cached_clip_saliency_map.unsqueeze(0).unsqueeze(0))
 
-        # attention_map, clip_saliency_map = self.get_clip_saliency_map(args, target_im)  # These are good
+        phosphene_placement_map = normalized_rescaling(phosphene_placement_map)
 
-        # # Put attention map in stn to get phosphene placement map
-        # phosphene_placement_map = self.stn(clip_saliency_map.unsqueeze(0).unsqueeze(0))
-        # phosphene_placement_map = (phosphene_placement_map / phosphene_placement_map.max())
-
-        phosphene_placement_map = normalized_rescaling(phosphene_placement_map)  # this is amplitudes
-
-        phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map,
-                                                                 rescale=False)  # if it is an image
+        # phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map,
+        #                                                          rescale=False)
         self.simulator.reset()
 
         phosphene_im = self.simulator(phosphene_placement_map)
@@ -134,6 +128,39 @@ class Phosphene_model(nn.Module):
 
 
 # STN for initialization with saliency map
+# class PhospheneTransformerNet(nn.Module):
+#     def __init__(self, size, args):
+#         super(PhospheneTransformerNet, self).__init__()
+#         self.size = size
+#         self.num_phosphenes = args.num_phosphenes
+#         # Using Sequential for compactness
+#         self.localization = nn.Sequential(
+#             nn.Conv2d(1, 32, 3, stride=1, padding=0),
+#             nn.ReLU(),
+#             nn.Conv2d(32, 64, 3, stride=2, padding=0),
+#             nn.ReLU(),
+#             nn.Conv2d(64, 1, 3, stride=1, padding=0),
+#             nn.ReLU()
+#         )
+#
+#         self.conv_padding = nn.Sequential(
+#             nn.Upsample((224, 224), mode='nearest'))
+#
+#
+#     def forward(self, x):
+#         xs = self.localization(x)
+#         # xs = torch.flatten(xs, start_dim=1)
+#
+#         # theta = xs.view(1, 32, 32)
+#         theta = self.conv_padding(xs)
+#         theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
+#         theta = F.sigmoid(theta)
+#
+#         return theta
+
+
+# Original where you get a 1D stimulation tensor, this is random initialization and you dont use the sample_stimulus
+# function of the dynaphos
 class PhospheneTransformerNet(nn.Module):
     def __init__(self, size, args):
         super(PhospheneTransformerNet, self).__init__()
@@ -141,73 +168,41 @@ class PhospheneTransformerNet(nn.Module):
         self.num_phosphenes = args.num_phosphenes
         # Using Sequential for compactness
         self.localization = nn.Sequential(
-            nn.Conv2d(1, 32, 3, stride=1, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, 3, stride=2, padding=0),
-            nn.ReLU(),
-            nn.Conv2d(64, 1, 3, stride=1, padding=0),
-            nn.ReLU()
+            nn.Conv2d(1, 8, kernel_size=7),
+            nn.MaxPool2d(2, stride=2),
+            nn.ReLU(True),
+            nn.Conv2d(8, 10, kernel_size=5),
+            nn.MaxPool2d(2, stride=2),
+            nn.ReLU(True)
         )
+        # Fully connected layer
+        self.fc_loc = nn.Sequential(
+            nn.Linear(10 * 52 * 52, self.num_phosphenes))
 
-        self.conv_padding = nn.Sequential(
-            nn.Upsample((224, 224), mode='nearest'))
+        # Initialize weights manually
+        self._init_weights()
 
+    def _init_weights(self):
+        # Manually initialize weights for convolutional layers within Sequential
+        for layer in self.localization:
+            if isinstance(layer, nn.Conv2d):
+                init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
+                if layer.bias is not None:
+                    init.constant_(layer.bias, 0)
+
+        # Manually initialize weights for the fully connected layer
+        for layer in self.fc_loc:
+            if isinstance(layer, nn.Linear):
+                init.xavier_normal_(layer.weight)
+                init.constant_(layer.bias, 0)
 
     def forward(self, x):
         xs = self.localization(x)
-        # xs = torch.flatten(xs, start_dim=1)
+        xs = torch.flatten(xs, start_dim=1)
 
-        # theta = xs.view(1, 32, 32)
-        theta = self.conv_padding(xs)
-        theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
-        theta = F.sigmoid(theta)
+        theta = self.fc_loc(xs)
 
         return theta
-
-
-# Original where you get a 1D stimulation tensor
-# class PhospheneTransformerNet(nn.Module):
-#     def __init__(self, size, args):
-#         super(PhospheneTransformerNet, self).__init__()
-#         self.size = size
-#         self.num_phosphenes = args.num_phosphenes
-#
-#         self.localization = nn.Sequential(
-#             nn.Conv2d(1, 8, kernel_size=7, padding=3),
-#             nn.ReLU(True),
-#             nn.Conv2d(8, 10, kernel_size=5, padding=2),
-#             nn.ReLU(True),
-#             nn.Conv2d(10, 10, kernel_size=3, padding=1),
-#             nn.ReLU(True),
-#             nn.AdaptiveAvgPool2d((size // 4, size // 4))
-#         )
-#
-#         # Reducing the number of fully connected layers
-#         self.fc_loc = nn.Sequential(
-#             nn.Linear(10 * (size // 4) * (size // 4), self.num_phosphenes),
-#             nn.ReLU(True)
-#         )
-#
-#         self._init_weights()
-#
-#     def _init_weights(self):
-#         for layer in self.localization:
-#             if isinstance(layer, nn.Conv2d):
-#                 nn.init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
-#                 if layer.bias is not None:
-#                     nn.init.constant_(layer.bias, 0)
-#
-#         for layer in self.fc_loc:
-#             if isinstance(layer, nn.Linear):
-#                 nn.init.xavier_normal_(layer.weight)
-#                 nn.init.constant_(layer.bias, 0)
-#
-#     def forward(self, x):
-#         xs = self.localization(x)
-#         xs = torch.flatten(xs, start_dim=1)
-#         theta = self.fc_loc(xs)
-#         return theta
-
 
 # -------------------------
 # Utility functions
