@@ -1,3 +1,5 @@
+import os
+
 import torch.nn as nn
 import numpy as np
 import torch
@@ -5,12 +7,14 @@ import torch.nn.init as init
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torchvision.transforms import ToPILImage
+from torchvision.transforms.functional import to_pil_image
 
 # Importing necessary libraries and modules
 import dynaphos
 import CLIP_.clip as clip
 from PIL import Image
 from dynaphos import utils, cortex_models
+from dynaphos.image_processing import sobel_processor
 from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
 import config
 import sketch_utils as utils
@@ -30,29 +34,27 @@ from dynaphos.simulator import ActivationThreshold
 
 class Phosphene_model(nn.Module):
     def __init__(self, args,
-                 num_phosphenes=None,
+                 electrode_grid=None,
                  imsize=224,
                  device=None):
         super(Phosphene_model, self).__init__()
 
+        abs_path = os.path.abspath(os.getcwd())
         self.args = args
-        self.num_phosphenes = num_phosphenes  # Number of electrodes or phosphenes to initialize the electrode grid with
-        self.constrain = args.constrain  # Related to if we want to have number of phosphenes constrained
-        self.percentage = args.percentage  # Indicates the percentage of phosphenes to keep
+        self.electrode_grid = electrode_grid  # Number of electrodes or phosphenes to initialize the electrode grid with
         self.device = device
         self.canvas_width, self.canvas_height = imsize, imsize  # Canvas size
-        self.params = utils.load_params(
-            'C:/Users/vanholk/sparsifier/dynaphos/config/params.yaml')  # TODO move this to our config file
+        self.params = utils.load_params(f"{abs_path}/dynaphos/config/params.yaml")
         self.params['run']['fps'] = 10  # 10 fps -> a single frame represents 100 milliseconds
         self.saliency_clip_model = args.saliency_clip_model
         self.text_target = args.text_target
-
+        self.top_k_values = args.top_k_values
         self.stn = PhospheneTransformerNet(size=self.canvas_width, args=self.args)  # Spatial Transformer Network
         self.dynaphos = dynaphos  # Dynaphos
 
         self.phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(self.params,
-                                                                                             self.num_phosphenes)
-        self.simulator = PhospheneSimulator(self.params, self.phosphene_coords)
+                                                                                             self.electrode_grid)
+        self.simulator = PhospheneSimulator(self.params, self.phosphene_coords, self.top_k_values)
 
         self.cached_attention_map = None
         self.cached_clip_saliency_map = None
@@ -65,9 +67,9 @@ class Phosphene_model(nn.Module):
         data_transforms = transforms.Compose([
             preprocess.transforms[-1],
         ])
-
-        image_input_clip = data_transforms(target_im).to(args.device)  # Defining image input for CLIP
-        text_input_clip = clip.tokenize([self.text_target]).to(args.device)  # Defining text input for CLIP
+        target_im[target_im == 0.] = 1.
+        image_input_clip = data_transforms(target_im).to(args.device)
+        text_input_clip = clip.tokenize([self.text_target]).to(args.device)
 
         attention_map = interpret(image_input_clip, text_input_clip, clip_model,
                                   device=args.device)
@@ -100,115 +102,104 @@ class Phosphene_model(nn.Module):
 
         phosphene_placement_map = normalized_rescaling(phosphene_placement_map)
 
-        # phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map,
-        #                                                          rescale=False)
+        phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map,
+                                                                 rescale=False) #Comment out for random initialization
         self.simulator.reset()
 
-        phosphene_im = self.simulator(phosphene_placement_map)
+        optimized_im = self.simulator(phosphene_placement_map)
+        optimized_im = optimized_im.unsqueeze(0)
+        optimized_im = optimized_im.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
+        optimized_im = optimized_im.permute(0, 1, 2, 3)
 
-        if self.constrain:
-            original_phosphenes_sum = phosphene_im.sum().item()
-            max_total_current = original_phosphenes_sum * (self.percentage / 100.0)
-            adjusted_phosphenes = randomly_deactivate_phosphenes(phosphene_im.clone(), max_total_current)
-            phosphene_im = adjusted_phosphenes
+        return optimized_im
 
-        phosphene_im = phosphene_im.unsqueeze(0)
-        phosphene_im = phosphene_im.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
-        phosphene_im = phosphene_im.permute(0, 1, 2, 3)
-
-        return phosphene_im
-
-    def save_png(self, output_dir, name, phosphene_im):
+    def save_png(self, output_dir, name, optimized_im):
         canvas_size = (self.canvas_width, self.canvas_height)
 
         to_pil = ToPILImage()
-        img_pil = to_pil(phosphene_im.squeeze(0).squeeze(0))
+        img_pil = to_pil(optimized_im.squeeze(0).squeeze(0))
 
         img_pil.save('{}/{}.png'.format(output_dir, name), format='PNG', size=canvas_size)
 
 
 # STN for initialization with saliency map
-# class PhospheneTransformerNet(nn.Module):
-#     def __init__(self, size, args):
-#         super(PhospheneTransformerNet, self).__init__()
-#         self.size = size
-#         self.num_phosphenes = args.num_phosphenes
-#         # Using Sequential for compactness
-#         self.localization = nn.Sequential(
-#             nn.Conv2d(1, 32, 3, stride=1, padding=0),
-#             nn.ReLU(),
-#             nn.Conv2d(32, 64, 3, stride=2, padding=0),
-#             nn.ReLU(),
-#             nn.Conv2d(64, 1, 3, stride=1, padding=0),
-#             nn.ReLU()
-#         )
-#
-#         self.conv_padding = nn.Sequential(
-#             nn.Upsample((224, 224), mode='nearest'))
-#
-#
-#     def forward(self, x):
-#         xs = self.localization(x)
-#         # xs = torch.flatten(xs, start_dim=1)
-#
-#         # theta = xs.view(1, 32, 32)
-#         theta = self.conv_padding(xs)
-#         theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
-#         theta = F.sigmoid(theta)
-#
-#         return theta
-
-
-# Original where you get a 1D stimulation tensor, this is random initialization and you dont use the sample_stimulus
-# function of the dynaphos
 class PhospheneTransformerNet(nn.Module):
     def __init__(self, size, args):
         super(PhospheneTransformerNet, self).__init__()
         self.size = size
-        self.num_phosphenes = args.num_phosphenes
-        # Using Sequential for compactness
+        self.electrode_grid = args.electrode_grid
         self.localization = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=7),
-            nn.MaxPool2d(2, stride=2),
-            nn.ReLU(True),
-            nn.Conv2d(8, 10, kernel_size=5),
-            nn.MaxPool2d(2, stride=2),
-            nn.ReLU(True)
+            nn.Conv2d(1, 32, 3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 3, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 1, 3, stride=1, padding=0),
+            nn.ReLU()
         )
-        # Fully connected layer
-        self.fc_loc = nn.Sequential(
-            nn.Linear(10 * 52 * 52, self.num_phosphenes))
 
-        # Initialize weights manually
-        self._init_weights()
+        self.conv_padding = nn.Sequential(
+            nn.Upsample((224, 224), mode='nearest'))
 
-    def _init_weights(self):
-        # Manually initialize weights for convolutional layers within Sequential
-        for layer in self.localization:
-            if isinstance(layer, nn.Conv2d):
-                init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
-                if layer.bias is not None:
-                    init.constant_(layer.bias, 0)
-
-        # Manually initialize weights for the fully connected layer
-        for layer in self.fc_loc:
-            if isinstance(layer, nn.Linear):
-                init.xavier_normal_(layer.weight)
-                init.constant_(layer.bias, 0)
 
     def forward(self, x):
         xs = self.localization(x)
-        xs = torch.flatten(xs, start_dim=1)
-
-        theta = self.fc_loc(xs)
+        theta = self.conv_padding(xs)
+        theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
+        theta = F.sigmoid(theta)
 
         return theta
+
+
+# Original where you get a 1D stimulation tensor, this is random initialization and you dont use the sample_stimulus
+# function of the dynaphos
+# class PhospheneTransformerNet(nn.Module):
+#     def __init__(self, size, args):
+#         super(PhospheneTransformerNet, self).__init__()
+#         self.size = size
+#         self.electrode_grid = args.electrode_grid
+#         # Using Sequential for compactness
+#         self.localization = nn.Sequential(
+#             nn.Conv2d(1, 8, kernel_size=7),
+#             nn.MaxPool2d(2, stride=2),
+#             nn.ReLU(True),
+#             nn.Conv2d(8, 10, kernel_size=5),
+#             nn.MaxPool2d(2, stride=2),
+#             nn.ReLU(True)
+#         )
+#         # Fully connected layer
+#         self.fc_loc = nn.Sequential(
+#             nn.Linear(10 * 52 * 52, self.electrode_grid))
+#
+#         # Initialize weights manually
+#         self._init_weights()
+#
+#     def _init_weights(self):
+#         # Manually initialize weights for convolutional layers within Sequential
+#         for layer in self.localization:
+#             if isinstance(layer, nn.Conv2d):
+#                 init.kaiming_uniform_(layer.weight, mode='fan_out', nonlinearity='relu')
+#                 if layer.bias is not None:
+#                     init.constant_(layer.bias, 0)
+#
+#         # Manually initialize weights for the fully connected layer
+#         for layer in self.fc_loc:
+#             if isinstance(layer, nn.Linear):
+#                 init.xavier_normal_(layer.weight)
+#                 init.constant_(layer.bias, 0)
+#
+#     def forward(self, x):
+#         xs = self.localization(x)
+#         xs = torch.flatten(xs, start_dim=1)
+#
+#         theta = self.fc_loc(xs)
+#
+#         return theta
 
 # -------------------------
 # Utility functions
 # -------------------------
-
-def normalized_rescaling(img, stimulus_scale=1000e-6):  # 100e-6
+args = config.parse_arguments()
+def normalized_rescaling(img, stimulus_scale=args.stimulus_scale_optimized):  # 100e-6
     """Normalize <img> and rescale the pixel intensities in the range [0, <stimulus_scale>].
     The output image represents the stimulation intensity map.
     param stimulus_scale: the stimulation amplitude corresponding to the highest-valued pixel.
@@ -216,64 +207,6 @@ def normalized_rescaling(img, stimulus_scale=1000e-6):  # 100e-6
 
     img_norm = (img - img.min()) / (img.max() - img.min())
     return img_norm * stimulus_scale
-
-
-def randomly_deactivate_phosphenes(phosphenes, max_total_current):
-    """
-    Randomly deactivates a selection of phosphenes to ensure the total current
-    does not exceed the specified maximum value. This function turns off phosphenes
-    completely without changing the intensity of the remaining ones.
-
-    Parameters:
-    phosphenes (Tensor): The original phosphenes activation map.
-    max_total_current (float): The maximum allowed sum of intensities over the electrode grid (total current).
-
-    Returns:
-    Tensor: The adjusted phosphenes intensity map.
-    """
-    # Flatten the phosphenes for easier manipulation
-    original_shape = phosphenes.shape
-    phosphenes_flat = phosphenes.flatten()
-
-    # Keep reducing phosphenes until the total current is under the limit
-    while phosphenes_flat.sum() > max_total_current:
-        # Find indices of currently active (non-zero) phosphenes
-        active_indices = torch.nonzero(phosphenes_flat, as_tuple=True)[0]
-
-        # If no active phosphenes left but still over max_current, break to avoid infinite loop
-        if len(active_indices) == 0:
-            break
-
-        # Randomly select one active phosphene to turn off
-        index_to_turn_off = np.random.choice(active_indices.cpu().numpy(), 1)
-
-        # Turn off the selected phosphene
-        phosphenes_flat[index_to_turn_off] = 0
-
-    # Reshape back to the original phosphenes map
-    adjusted_phosphenes = phosphenes_flat.reshape(original_shape)
-
-    return adjusted_phosphenes
-
-
-def plot_init_phosphenes(args, phosphenes):
-    img = phosphenes
-    # Convert img from HW to NHW
-    img = img.unsqueeze(0)
-    img = img.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
-    img = img.permute(0, 1, 2, 3).to(args.device)  # NHW -> NHW
-    # Convert tensor to numpy array
-    img_np = img.squeeze().cpu().detach().numpy()
-    # Transpose the dimensions from [C, H, W] to [H, W, C] for RGB image
-    img_np = img_np.transpose(1, 2, 0)
-
-    # Plot the image
-    plt.imshow((img_np * 255).astype(int), cmap='gray')
-    plt.axis('off')
-    plt.title('Initialized image')
-    plt.show()
-
-    return img
 
 
 def get_target_and_mask(args, target_image_path):
@@ -336,6 +269,37 @@ def interpret(image, texts, model, device):
 def softmax(x, tau=0.2):
     e_x = np.exp(x / tau)
     return e_x / e_x.sum()
+
+def plot_saliency_map(target_im, attention_map, clip_saliency_map):
+    """
+    Plots the target image, attention map, and CLIP saliency map side by side.
+
+    :param target_im: Target image tensor [C, H, W].
+    :param attention_map: Attention map as a numpy array.
+    :param clip_saliency_map: CLIP saliency map as a numpy array.
+    """
+    # Convert the target image tensor to PIL for consistent plotting
+    target_pil = to_pil_image(target_im.squeeze(0))
+
+    # Set up the matplotlib figure and axes
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))  # Adjust figsize to your needs
+
+    # Plot each of the images/maps
+    axs[0].imshow(target_pil)
+    axs[0].set_title('Target Image')
+    axs[0].axis('off')  # Turn off axis
+
+    axs[1].imshow(attention_map, cmap='viridis')
+    axs[1].set_title('Attention Map')
+    axs[1].axis('off')
+
+    axs[2].imshow(clip_saliency_map.detach().numpy(), cmap='viridis')
+    axs[2].set_title('CLIP Saliency Map')
+    axs[2].axis('off')
+
+    plt.tight_layout()
+    plt.savefig(f"{args.output_dir}/saliency_map.png", bbox_inches='tight')  # Saves the figure to the path specified
+    plt.close()
 
 
 class XDoG_(object):

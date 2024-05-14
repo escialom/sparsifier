@@ -1,16 +1,13 @@
-from matplotlib import pyplot as plt
-
-from models.loss import Loss
-from simplified_painter import Phosphene_model
-import config
-import sketch_utils as utils
-import torch
-from simplified_painter import get_target_and_mask
-from tqdm.auto import tqdm
-import time
 import os
+import torch
 import numpy as np
 from pathlib import Path
+from tqdm.auto import tqdm
+from matplotlib import pyplot as plt
+import config
+from models.loss import Loss
+from simplified_painter import Phosphene_model, get_target_and_mask, plot_saliency_map
+import sketch_utils as utils
 
 
 def count_trainable_parameters(model):
@@ -19,13 +16,11 @@ def count_trainable_parameters(model):
 
 def plotting_loss(args):
     config_path = os.path.join(args.output_dir, 'config.npy')
-
     config_file = np.load(config_path, allow_pickle=True).item()
 
     loss_eval = config_file.get('loss_eval', [])
 
     epochs = np.arange(len(loss_eval)) * 10  # Multiply each epoch index by 10
-
     plt.figure()
     plt.plot(epochs, loss_eval, label='Loss over Epochs')
     plt.xlabel('Epochs')
@@ -40,14 +35,13 @@ def plotting_loss(args):
 
 def main(args):
     loss_func = Loss(args)
-    # my_real_super_secret_vip_loss_func = torch.nn.MSELoss()
     phosphene_model = Phosphene_model(args,
-                                      num_phosphenes=args.num_phosphenes,
+                                      electrode_grid=args.electrode_grid,
                                       imsize=224,
                                       device='cpu').to(args.device)
     optimizer = torch.optim.Adam(phosphene_model.parameters(), lr=args.lr)
 
-    print(count_trainable_parameters(phosphene_model))  # 27692394, these are the stn params
+    print(count_trainable_parameters(phosphene_model))  # STN parameters
 
     counter = 0
     configs_to_save = {"loss_eval": []}
@@ -60,7 +54,7 @@ def main(args):
     abs_path = Path(os.path.abspath(os.getcwd()))
     # path_to_image_directory = ...
     # image_paths = os.listdir(path_to_image_directory)
-    image_paths = [Path(f"{abs_path}/target_images/rose.jpeg"), ]
+    image_paths = [Path(f"{abs_path}/target_images/camel.png"), ]
 
     if args.display:
         epoch_range = range(args.num_iter)
@@ -69,39 +63,32 @@ def main(args):
 
     for epoch in epoch_range:
         for image_path in image_paths:
-
             target_im, mask = get_target_and_mask(args, target_image_path=image_path)
-
 
             if not args.display:
                 epoch_range.refresh()
 
             optimizer.zero_grad()
-
-            phosphene_im = phosphene_model(target_im, args)
-            phosphene_im.to(args.device)
-
+            optimized_im = phosphene_model(target_im, args)
+            optimized_im.to(args.device)
             target_im[target_im == 1.] = 0.
 
-            losses_dict = loss_func(phosphene_im, target_im, phosphene_model.parameters(), counter,
+            losses_dict = loss_func(optimized_im, target_im, phosphene_model.parameters(), counter,
                                     optimizer)
-
             loss = sum(list(losses_dict.values()))
-            # loss = my_real_super_secret_vip_loss_func(phosphene_im, target_im.detach())
             print(loss)
             loss.backward()
-
             optimizer.step()  # Updating parameters
 
             if epoch % args.save_interval == 0:
-                utils.plot_batch(target_im, phosphene_im, f"{args.output_dir}/jpg_logs", counter,
-                                 use_wandb=args.use_wandb, title=f"iter{epoch}.jpg")
+                utils.plot_batch(target_im, optimized_im, f"{args.output_dir}/jpg_logs", counter,
+                                  title=f"iter{epoch}.jpg")
                 phosphene_model.save_png(
-                    f"{args.output_dir}/png_logs", f"png_iter{epoch}", phosphene_im)
+                    f"{args.output_dir}/png_logs", f"png_iter{epoch}", optimized_im)
 
             if epoch % args.eval_interval == 0:
                 with torch.no_grad():
-                    losses_dict_eval = loss_func(phosphene_im, target_im,
+                    losses_dict_eval = loss_func(optimized_im, target_im,
                                                  phosphene_model.parameters(), counter, optimizer, mode="eval")
                     loss_eval = sum(list(losses_dict_eval.values()))
                     configs_to_save["loss_eval"].append(loss_eval.item())
@@ -122,9 +109,9 @@ def main(args):
                             best_iter = epoch
                             terminate = False
                             utils.plot_batch(
-                                target_im, phosphene_im, args.output_dir, counter, use_wandb=args.use_wandb,
+                                target_im, optimized_im, args.output_dir, counter,
                                 title="best_iter.jpg")
-                            phosphene_model.save_png(args.output_dir, "best_iter", phosphene_im)
+                            phosphene_model.save_png(args.output_dir, "best_iter", optimized_im)
 
                     if abs(cur_delta) <= min_delta:
                         if terminate:
@@ -135,20 +122,13 @@ def main(args):
                     np.save(f"{args.output_dir}/config.npy", final_config)
                     plotting_loss(args)
 
-            # if counter == 0 and args.attention_init:
-            #     utils.plot_atten(attention_map, clip_saliency_map, target_im, phosphene_placement_map,
-            #                      args.use_wandb, "{}/{}.jpg".format(
-            #             args.output_dir, "attention_map"),
-            #                      args.saliency_model, args.display_logs)
+            if counter == 0 and args.attention_init:
+                attention_map, clip_saliency_map = phosphene_model.get_clip_saliency_map(args, target_im)
+                plot_saliency_map(target_im, attention_map, clip_saliency_map)
 
         counter += 1
 
-    phosphene_model.save_png(args.output_dir, "final_png")
-    path_png = os.path.join(args.output_dir, "best_iter.png")
-
-    # utils.log_sketch_summary_final(
-    #     path_png, args.use_wandb, args.device, best_iter, best_loss, "best total")
-
+    phosphene_model.save_png(args.output_dir, "final_png", optimized_im)
     return configs_to_save
 
 

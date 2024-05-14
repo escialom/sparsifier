@@ -25,16 +25,17 @@ def parse_arguments():
     # ============ general ============
     # =================================
     abs_path = os.path.abspath(os.getcwd())
-    target = f"{abs_path}/target_images/rose.jpeg"  # These lines gave wrong formatting
+    target_name = "camel.png"
+    target = f"{abs_path}/target_images/{target_name}"  # These lines gave wrong formatting
     assert os.path.isfile(target), f"{target} does not exist!"
-    test_name = os.path.splitext("rose.jpeg")[0]
+    test_name = os.path.splitext(target_name)[0]
     output_dir = f"{abs_path}/output_sketches/{test_name}/"  # this line gave wrong formatting
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    parser.add_argument("--target", default=f"{abs_path}/target_images/rose.jpeg", help="target image path")
-    parser.add_argument("--target_file", type=str, default="rose.jpeg",
+    parser.add_argument("--target", default=f"{abs_path}/target_images/{target_name}", help="target image path")
+    parser.add_argument("--target_file", type=str, default=target_name,
                         help="target image file, located in <target_images>")
-    parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/",
+    parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/test/",
                         help="directory to save the output images and loss")
     parser.add_argument("--path_svg", type=str, default="none",
                         help="if you want to load an svg file and train from it")
@@ -48,33 +49,19 @@ def parse_arguments():
     parser.add_argument("--display", type=int, default=0)
     parser.add_argument("--multiprocess", type=int, default=0,
                         help="recommended to use multiprocess if your computer has enough memory")
-    parser.add_argument('-colab', action='store_true')
     parser.add_argument('-cpu', action='store_true')
     parser.add_argument('-display', action='store_true')
     parser.add_argument('--gpunum', type=int, default=0)
 
     # =================================
-    # ============ wandb ============
-    # =================================
-    parser.add_argument("--use_wandb", type=int, default=0)
-    parser.add_argument("--wandb_user", type=str, default="yael-vinker")
-    parser.add_argument("--wandb_name", type=str, default="test")
-    parser.add_argument("--wandb_project_name", type=str, default="none")
-
-    # =================================
     # =========== training ============
     # =================================
-    parser.add_argument("--num_iter", type=int, default=2001,
+    parser.add_argument("--num_iter", type=int, default=11,
                         help="number of optimization iterations")  # default = 2001
-    parser.add_argument("--num_stages", type=int, default=1,
-                        help="training stages, you can train x strokes, then freeze them and train another x strokes "
-                             "etc.")
     parser.add_argument("--num_sketches", type=int, default=3,
                         help="it is recommended to draw 3 sketches and automatically chose the best one")
     parser.add_argument("--lr_scheduler", type=int, default=0)
     parser.add_argument("--lr", type=float, default=0.00001)  # default = 1.0
-    parser.add_argument("--batch_size", type=int, default=1,
-                        help="for optimization it's only one image")
     parser.add_argument("--save_interval", type=int, default=10)
     parser.add_argument("--eval_interval", type=int, default=10)
     parser.add_argument("--image_scale", type=int, default=224)
@@ -85,11 +72,11 @@ def parse_arguments():
     # =================================
     # ======== phosphene params =========
     # =================================
-    parser.add_argument("--num_phosphenes", type=int,
-                        default=1000,
+    parser.add_argument("--electrode_grid", type=int,
+                        default=1024,
                         help="number of phosphenes used to generate the image, this defines the level of density.")
-    parser.add_argument('--patch_size', type=int, help='Size of each of the patches of phosphenes.', default=8)  # 10
-    parser.add_argument('--phosphene_radius', type=int, help='Radius of the phosphene.', default=1.2)  # 1.5
+    parser.add_argument("--top_k_values", type=int, default=500,
+                        help="Number of phosphenes to generate from electrode grid")
     parser.add_argument("--attention_init", type=int, default=1,
                         help="if True, use the attention heads of Dino model to set the location of the initial strokes")
     parser.add_argument("--saliency_model", type=str, default="clip")
@@ -97,8 +84,11 @@ def parse_arguments():
     parser.add_argument("--xdog_intersec", type=int, default=1)
     parser.add_argument("--mask_object_attention", type=int, default=0)
     parser.add_argument("--softmax_temp", type=float, default=0.3)  # 0.3
-    parser.add_argument("--constrain", type=int, default=0)
-    parser.add_argument("--percentage", type=int, default=100, help="Percentage of phosphenes that you want to keep")
+    parser.add_argument("--stimulus_scale_optimized", type=int, default=1000e-6,
+                        help="Stimulus scale for rendering the optimized image")
+    parser.add_argument("--stimulus_scale_control", type=int, default=250e-6,
+                        help="Stimulus scale for rendering the control image")
+    parser.add_argument("--exp_postprocessing", type=int, default=0.5)
 
     # =================================
     # ============= loss ==============
@@ -130,14 +120,9 @@ def parse_arguments():
     args = parser.parse_args()
     set_seed(args.seed)
 
-    assert args.image_scale % args.patch_size == 0
 
     args.clip_conv_layer_weights = [
         float(item) for item in args.clip_conv_layer_weights.split(',')]
-
-    args.output_dir = os.path.join(args.output_dir, args.wandb_name)
-    if not os.path.exists(args.output_dir):
-        os.mkdir(args.output_dir)
 
     jpg_logs_dir = f"{args.output_dir}/jpg_logs"
     png_logs_dir = f"{args.output_dir}/png_logs"
@@ -146,22 +131,16 @@ def parse_arguments():
     if not os.path.exists(png_logs_dir):
         os.mkdir(png_logs_dir)
 
-    # if args.use_wandb:
-    #     wandb.init(project=args.wandb_project_name, entity=args.wandb_user,
-    #                config=args, name=args.wandb_name, id=wandb.util.generate_id())
-
     if args.use_gpu:
         args.device = torch.device("cuda" if (
                 torch.cuda.is_available() and torch.cuda.device_count() > 0) else "cpu")
     else:
         args.device = torch.device("cpu")
-    # pydiffvg.set_use_gpu(torch.cuda.is_available() and args.use_gpu) #TODO: edit this
-    # pydiffvg.set_device(args.device) #TODO: edit this
+
     return args
 
 
 if __name__ == "__main__":
-    # for cog predict
     args = parse_arguments()
     final_config = vars(args)
     np.save(f"{args.output_dir}/config_init.npy", final_config)

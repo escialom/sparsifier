@@ -47,7 +47,7 @@ def imwrite(img, filename, gamma=2.2, normalize=False, use_wandb=False, wandb_na
         wandb.log({wandb_name + "_": images}, step=step)
 
 
-def plot_batch(inputs, outputs, output_dir, step, use_wandb, title):
+def plot_batch(inputs, outputs, output_dir, step, title):
     plt.figure()
     plt.subplot(2, 1, 1)
     grid = make_grid(inputs.clone().detach(), normalize=True, pad_value=2)
@@ -64,8 +64,7 @@ def plot_batch(inputs, outputs, output_dir, step, use_wandb, title):
     plt.title("outputs")
 
     plt.tight_layout()
-    if use_wandb:
-        wandb.log({"output": wandb.Image(plt)}, step=step)
+
     plt.savefig("{}/{}".format(output_dir, title))
     plt.close()
 
