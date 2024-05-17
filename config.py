@@ -29,13 +29,16 @@ def parse_arguments():
     target = f"{abs_path}/target_images/{target_name}"  # These lines gave wrong formatting
     assert os.path.isfile(target), f"{target} does not exist!"
     test_name = os.path.splitext(target_name)[0]
-    output_dir = f"{abs_path}/output_sketches/{test_name}/"  # this line gave wrong formatting
+    density = 0.46
+    output_dir = f"{abs_path}/output_sketches/{test_name}/test/{density}/"  # this line gave wrong formatting
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+
+    parser.add_argument("--target_name", default=target_name)
     parser.add_argument("--target", default=f"{abs_path}/target_images/{target_name}", help="target image path")
     parser.add_argument("--target_file", type=str, default=target_name,
                         help="target image file, located in <target_images>")
-    parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/test/",
+    parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/test/{density}",
                         help="directory to save the output images and loss")
     parser.add_argument("--path_svg", type=str, default="none",
                         help="if you want to load an svg file and train from it")
@@ -56,7 +59,7 @@ def parse_arguments():
     # =================================
     # =========== training ============
     # =================================
-    parser.add_argument("--num_iter", type=int, default=11,
+    parser.add_argument("--num_iter", type=int, default=2001,
                         help="number of optimization iterations")  # default = 2001
     parser.add_argument("--num_sketches", type=int, default=3,
                         help="it is recommended to draw 3 sketches and automatically chose the best one")
@@ -75,10 +78,11 @@ def parse_arguments():
     parser.add_argument("--electrode_grid", type=int,
                         default=1024,
                         help="number of phosphenes used to generate the image, this defines the level of density.")
-    parser.add_argument("--top_k_values", type=int, default=500,
+    parser.add_argument("--phosphene_selection", type=int, default=190,
                         help="Number of phosphenes to generate from electrode grid")
+    parser.add_argument("--phosphene_density", type=int, default=density, help="Percentage of phosphenes to be rendered")
     parser.add_argument("--attention_init", type=int, default=1,
-                        help="if True, use the attention heads of Dino model to set the location of the initial strokes")
+                        help="if True, use the attention heads of CLIP")
     parser.add_argument("--saliency_model", type=str, default="clip")
     parser.add_argument("--saliency_clip_model", type=str, default="ViT-B/32")
     parser.add_argument("--xdog_intersec", type=int, default=1)
@@ -119,7 +123,6 @@ def parse_arguments():
 
     args = parser.parse_args()
     set_seed(args.seed)
-
 
     args.clip_conv_layer_weights = [
         float(item) for item in args.clip_conv_layer_weights.split(',')]

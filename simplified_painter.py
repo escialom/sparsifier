@@ -1,37 +1,31 @@
 import os
+import PIL
+from PIL import Image
 
-import torch.nn as nn
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.init as init
+import torch.nn as nn
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-from torchvision.transforms import ToPILImage
-from torchvision.transforms.functional import to_pil_image
-
-# Importing necessary libraries and modules
-import dynaphos
-import CLIP_.clip as clip
-from PIL import Image
-from dynaphos import utils, cortex_models
-from dynaphos.image_processing import sobel_processor
-from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
-import config
-import sketch_utils as utils
-import PIL
 from scipy.ndimage import gaussian_filter
 from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
 from torchvision import transforms
-from PIL import Image
-from dynaphos.simulator import ActivationThreshold
+from torchvision.transforms import ToPILImage
+from torchvision.transforms.functional import to_pil_image
 
+import CLIP_.clip as clip
+import config
+import dynaphos
+import sketch_utils as sketch_utils
+from dynaphos import utils, cortex_models
+from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
+
+args = config.parse_arguments()
 
 # -------------------------
 # Define model classes
 # -------------------------
-
-
 class Phosphene_model(nn.Module):
     def __init__(self, args,
                  electrode_grid=None,
@@ -41,27 +35,28 @@ class Phosphene_model(nn.Module):
 
         abs_path = os.path.abspath(os.getcwd())
         self.args = args
-        self.electrode_grid = electrode_grid  # Number of electrodes or phosphenes to initialize the electrode grid with
-        self.device = device
-        self.canvas_width, self.canvas_height = imsize, imsize  # Canvas size
         self.params = utils.load_params(f"{abs_path}/dynaphos/config/params.yaml")
-        self.params['run']['fps'] = 10  # 10 fps -> a single frame represents 100 milliseconds
+        self.device = device
+
+        self.canvas_width, self.canvas_height = imsize, imsize
         self.saliency_clip_model = args.saliency_clip_model
         self.text_target = args.text_target
-        self.top_k_values = args.top_k_values
-        self.stn = PhospheneTransformerNet(size=self.canvas_width, args=self.args)  # Spatial Transformer Network
-        self.dynaphos = dynaphos  # Dynaphos
 
+        self.electrode_grid = electrode_grid
+        self.phosphene_selection = args.phosphene_selection
+        self.phosphene_density = args.phosphene_density
         self.phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(self.params,
                                                                                              self.electrode_grid)
-        self.simulator = PhospheneSimulator(self.params, self.phosphene_coords, self.top_k_values)
+        self.stn = PhospheneTransformerNet(size=self.canvas_width, args=self.args)
+        self.dynaphos = dynaphos
+        self.simulator = PhospheneSimulator(self.params, self.phosphene_coords, self.phosphene_selection, self.phosphene_density)
 
         self.cached_attention_map = None
         self.cached_clip_saliency_map = None
 
     def get_clip_saliency_map(self, args, target_im):
         clip_model, preprocess = clip.load(self.saliency_clip_model, device=self.device,
-                                           jit=False)  # CLIP model
+                                           jit=False)
         clip_model.eval().to(self.device)
 
         data_transforms = transforms.Compose([
@@ -85,30 +80,26 @@ class Phosphene_model(nn.Module):
         clip_saliency_map = np.copy(intersec_map)
         clip_saliency_map[intersec_map > 0] = softmax(intersec_map[intersec_map > 0],
                                                       tau=args.softmax_temp)
-
         clip_saliency_map = torch.Tensor(clip_saliency_map) / clip_saliency_map.max()
         clip_saliency_map.requires_grad = True
 
         return attention_map, clip_saliency_map
 
     def forward(self, target_im, args, refresh_maps=False):
-
         if self.cached_clip_saliency_map is None or refresh_maps:
             self.cached_attention_map, self.cached_clip_saliency_map = self.get_clip_saliency_map(args, target_im)
-
             # Use self.cached_clip_saliency_map in the forward process
+
         phosphene_placement_map = self.stn(
             self.cached_clip_saliency_map.unsqueeze(0).unsqueeze(0))
 
         phosphene_placement_map = normalized_rescaling(phosphene_placement_map)
-
         phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map,
                                                                  rescale=False) #Comment out for random initialization
         self.simulator.reset()
-
         optimized_im = self.simulator(phosphene_placement_map)
         optimized_im = optimized_im.unsqueeze(0)
-        optimized_im = optimized_im.repeat(1, 3, 1, 1)  # Now the shape is [1, 3, H, W]
+        optimized_im = optimized_im.repeat(1, 3, 1, 1)
         optimized_im = optimized_im.permute(0, 1, 2, 3)
 
         return optimized_im
@@ -198,7 +189,6 @@ class PhospheneTransformerNet(nn.Module):
 # -------------------------
 # Utility functions
 # -------------------------
-args = config.parse_arguments()
 def normalized_rescaling(img, stimulus_scale=args.stimulus_scale_optimized):  # 100e-6
     """Normalize <img> and rescale the pixel intensities in the range [0, <stimulus_scale>].
     The output image represents the stimulation intensity map.
@@ -218,11 +208,11 @@ def get_target_and_mask(args, target_image_path):
         new_image.paste(target, (0, 0), target)
         target = new_image
     target = target.convert("RGB")
-    masked_im, mask = utils.get_mask_u2net(args, target)
+    masked_im, mask = sketch_utils.get_mask_u2net(args, target)
     if args.mask_object:
         target = masked_im
     if args.fix_scale:
-        target = utils.fix_image_scale(target)
+        target = sketch_utils.fix_image_scale(target)
 
     transforms_ = []
     if target.size[0] != target.size[1]:
@@ -248,16 +238,16 @@ def interpret(image, texts, model, device):
     R = R.unsqueeze(0).expand(1, num_tokens, num_tokens)
     cams = []  # there are 12 attention blocks
     for i, blk in enumerate(image_attn_blocks):
-        cam = blk.attn_probs.detach()  # attn_probs shape is 12, 50, 50
+        cam = blk.attn_probs.detach()
         # each patch is 7x7, so we have 49 pixels + 1 for positional encoding
         cam = cam.reshape(1, -1, cam.shape[-1], cam.shape[-1])
         cam = cam.clamp(min=0)
-        cam = cam.clamp(min=0).mean(dim=1)  # mean of the 12 something
+        cam = cam.clamp(min=0).mean(dim=1)
         cams.append(cam)
         R = R + torch.bmm(cam, R)
 
-    cams_avg = torch.cat(cams)  # 12, 50, 50
-    cams_avg = cams_avg[:, 0, 1:]  # 12, 1, 49
+    cams_avg = torch.cat(cams)
+    cams_avg = cams_avg[:, 0, 1:]
     image_relevance = cams_avg.mean(dim=0).unsqueeze(0)
     image_relevance = image_relevance.reshape(1, 1, 7, 7)
     image_relevance = torch.nn.functional.interpolate(image_relevance, size=224, mode='bicubic')
@@ -282,12 +272,12 @@ def plot_saliency_map(target_im, attention_map, clip_saliency_map):
     target_pil = to_pil_image(target_im.squeeze(0))
 
     # Set up the matplotlib figure and axes
-    fig, axs = plt.subplots(1, 3, figsize=(15, 5))  # Adjust figsize to your needs
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
 
     # Plot each of the images/maps
     axs[0].imshow(target_pil)
     axs[0].set_title('Target Image')
-    axs[0].axis('off')  # Turn off axis
+    axs[0].axis('off')
 
     axs[1].imshow(attention_map, cmap='viridis')
     axs[1].set_title('Attention Map')
@@ -298,7 +288,7 @@ def plot_saliency_map(target_im, attention_map, clip_saliency_map):
     axs[2].axis('off')
 
     plt.tight_layout()
-    plt.savefig(f"{args.output_dir}/saliency_map.png", bbox_inches='tight')  # Saves the figure to the path specified
+    plt.savefig(f"{args.output_dir}/saliency_map.png", bbox_inches='tight')
     plt.close()
 
 

@@ -1,13 +1,15 @@
 import os
-import torch
-import numpy as np
 from pathlib import Path
-from tqdm.auto import tqdm
+
+import numpy as np
+import torch
 from matplotlib import pyplot as plt
+from tqdm.auto import tqdm
+
 import config
+import sketch_utils as utils
 from models.loss import Loss
 from simplified_painter import Phosphene_model, get_target_and_mask, plot_saliency_map
-import sketch_utils as utils
 
 
 def count_trainable_parameters(model):
@@ -71,12 +73,12 @@ def main(args):
             optimizer.zero_grad()
             optimized_im = phosphene_model(target_im, args)
             optimized_im.to(args.device)
-            target_im[target_im == 1.] = 0.
+
+            target_im[target_im == 1.] = 0. #Make image background black
 
             losses_dict = loss_func(optimized_im, target_im, phosphene_model.parameters(), counter,
                                     optimizer)
             loss = sum(list(losses_dict.values()))
-            print(loss)
             loss.backward()
             optimizer.step()  # Updating parameters
 
@@ -134,11 +136,8 @@ def main(args):
 
 if __name__ == "__main__":
     args = config.parse_arguments()
-
     final_config = vars(args)
-
     configs_to_save = main(args)
-
     for k in configs_to_save.keys():
         final_config[k] = configs_to_save[k]
     np.save(f"{args.output_dir}/config.npy", final_config)

@@ -14,7 +14,6 @@ from dynaphos.utils import (to_tensor, get_data_kwargs, get_truncated_normal,
                             print_stats, sigmoid, to_numpy, Map)
 
 
-
 class State:
     def __init__(self, params: dict, shape: Tuple[int, ...],
                  verbose: Optional[bool] = False):
@@ -91,7 +90,6 @@ class ActivationThreshold(State):
             self.state = torch.zeros(self.shape, **self.data_kwargs)
 
 
-
 class Trace(State):
     def __init__(self, params: dict, shape: Tuple[int, ...],
                  verbose: Optional[bool] = False):
@@ -143,18 +141,6 @@ class Brightness(State):
         self.state = sigmoid(self.slope * (x - self.cps_half))
         print_stats('sigmoided activation', self.state, self.verbose)
 
-# class Brightness(State):
-#     def __init__(self, params: dict, shape: Tuple[int, ...], verbose: Optional[bool] = False):
-#         super().__init__(params, shape, verbose)
-#         # Initialization of slope and cps_half is no longer needed
-#         # as we will set a uniform brightness value
-#
-#     def update(self, x: torch.Tensor):
-#         """Set uniform activation values."""
-#         uniform_brightness_value = 1000.0
-#         self.state = torch.full_like(x, uniform_brightness_value)
-#         print_stats('uniform brightness', self.state, self.verbose)
-
 
 class Sigma(State):
     def __init__(self, params: dict, shape: Tuple[int, ...],
@@ -166,9 +152,8 @@ class Sigma(State):
         if p['size_equation'] == 'sqrt':  # Tehovnik 2007
             def f(x):
                 division_result = torch.div(x, p['current_spread'])
-                safe_division_result = torch.clamp(division_result, min=epsilon)  # Ensure non-zero positive before sqrt
-                return torch.sqrt(safe_division_result)
-                # return torch.sqrt(torch.div(x, p['current_spread']))
+                division_result = torch.clamp(division_result, min=epsilon)  # Ensure non-zero positive before sqrt
+                return torch.sqrt(division_result)
         elif p['size_equation'] == 'sigmoid':  # Bosking et al., 2017
             def f(x):
                 return 0.5 * p['MD'] * sigmoid(p['slope_size'] *
@@ -183,7 +168,6 @@ class Sigma(State):
 
         # Current spread to sigma in pixels.
         self.state = torch.mul(self.f(x), self.scale)
-
         print_stats('Sigma (in degrees)', self.state, self.verbose)
 
 
@@ -193,7 +177,8 @@ class GaussianSimulator:
     and allows for adjustments based on various parameters related to
     the stimulation"""
 
-    def __init__(self, params: dict, coordinates, top_k_values=500, rng: Optional[np.random.Generator] = None, theta: Optional[np.ndarray] = None):
+    def __init__(self, params: dict, coordinates, phosphene_selection=500, phosphene_density = 1.0, rng: Optional[np.random.Generator] = None,
+                 theta: Optional[np.ndarray] = None):
         """initialize a simulator with provided parameters settings,
         given phosphene locations in polar coordinates
 
@@ -204,7 +189,8 @@ class GaussianSimulator:
         """
 
         self.params = params
-        self.top_k_values = top_k_values
+        self.phosphene_selection = phosphene_selection
+        self.phosphene_density = phosphene_density
         self.data_kwargs = get_data_kwargs(self.params)
 
         rng = np.random.default_rng() if rng is None else rng
@@ -285,10 +271,10 @@ class GaussianSimulator:
         phosphene_maps = torch.sqrt(x_rotated ** 2 + y_rotated ** 2 * gamma ** 2)
         return phosphene_maps
 
-    def generate_phosphene_maps(self, coordinates: Map,  # TODO our elem_xy_locations?
-                                remove_invalid: Optional[bool] = True,  # TODO Remove
-                                theta: Optional[np.ndarray] = None,  # TODO ?
-                                ) -> torch.Tensor:  # TODO returns a tensor representing phosphene maps
+    def generate_phosphene_maps(self, coordinates: Map,
+                                remove_invalid: Optional[bool] = True,
+                                theta: Optional[np.ndarray] = None,
+                                ) -> torch.Tensor:
         """Generate phosphene maps (for each phosphene distance to each pixel).
 
         :param coordinates: Coordinates of phosphenes.
@@ -298,12 +284,12 @@ class GaussianSimulator:
         describing distances from phosphene locations
         """
 
-        # Phosphene coordinates, TODO replace with our elem_xy_locations and keep their transformations for further calculations
+        # Phosphene coordinates
         x_coords, y_coords = coordinates.cartesian  # Cartesian coordinates that we alread have
         x_coords = torch.reshape(self.to_tensor(x_coords), (-1, 1, 1))
         y_coords = torch.reshape(self.to_tensor(y_coords), (-1, 1, 1))
 
-        # x,y limits of the simulation, TODO these are their view limits
+        # x,y limits of the simulation
         # res_x, res_y = [32, 32]
         res_x, res_y = self.params['run']['resolution']
         x_org, y_org = self.params['run']['origin']
@@ -311,7 +297,7 @@ class GaussianSimulator:
         x_min, x_max = x_org - hemi_fov, x_org + hemi_fov
         y_min, y_max = y_org - hemi_fov, y_org + hemi_fov
 
-        if remove_invalid:  # TODO filters out invalid coordiates
+        if remove_invalid:
             # Check if phosphene locations are inside of view angle.
             valid = (
                     torch.ge(x_coords, x_min) & torch.less(x_coords, x_max) &
@@ -367,12 +353,9 @@ class GaussianSimulator:
 
         self.activation.update(
             charge_per_s)
-
         self.trace.update(charge_per_s)
-
         self.sigma.update(
             amplitude.view(self.shape))
-
         self.brightness.update(self.activation.get())
 
     def get_current(self, amplitude: torch.Tensor, frequency: torch.Tensor,
@@ -388,12 +371,9 @@ class GaussianSimulator:
         leak_current = \
             self.trace.get() + self.params['thresholding']['rheobase']
 
-
         charge_per_s = torch.relu((amplitude - leak_current) *
                                   pulse_width * frequency)
-
         self.effective_charge_per_second = charge_per_s
-
         print_stats('charge per second', charge_per_s)
 
         return charge_per_s
@@ -407,17 +387,16 @@ class GaussianSimulator:
         """
 
         # Calculate normalized Gaussian (peak has value 1).
-        # tighter sigma clamping
-        sigma = self.sigma.get().clamp(min=1e-6, max=1e6)  # 1e-22 is very small, constrain it further
+        # Tighter sigma clamping
+        sigma = self.sigma.get().clamp(min=1e-6, max=1e6)
 
-        # check whether input is ok
         if not torch.isfinite(
-                self.phosphene_maps).all():  # same check as we did above with isnan and isinf but more concise
+                self.phosphene_maps).all():
             raise ValueError("phosphene_maps contains inf or nan values")
 
-        # clamp exponent too
+        # Clamp exponent
         exponent = -0.5 * (self.phosphene_maps / sigma) ** 2
-        exponent = torch.clamp(exponent, min=-20, max=20)  # Optional: Clamp exponent to avoid overflow
+        exponent = torch.clamp(exponent, min=-20, max=20)
         exp = torch.exp(exponent)
         # Clamp the output of the exponential function to ensure it doesn't fall below 1e-8
         exp = torch.clamp(exp, min=1e-8)
@@ -447,20 +426,27 @@ class GaussianSimulator:
         :return: image with simulated phosphene representation
         """
 
-        # Update phosphene state.
         self.update(amplitude, pulse_width, frequency)
+        #
+        # activation = self.gaussian_activation()
+        # new_threshold = torch.full((self.phosphene_selection, 1, 1), 0)
+
+        # # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
+        # supra_threshold = torch.greater(self.activation.get(), new_threshold)
+        # intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
 
         # Generate phosphene map.
         activation = self.gaussian_activation()
 
         # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
-        # new_threshold = torch.full((1000, 1, 1), 0)
+        new_threshold = torch.full((self.num_phosphenes, 1, 1), 0)
 
         # Fetch and flatten activation and threshold tensors
         activation_values = self.activation.get().flatten()  # Flattening to 1D
-        threshold_values = self.threshold.get().flatten()  # Flattening to 1D
 
-        topk_values, topk_indices = torch.topk(activation_values, k=self.top_k_values)
+        constrained_phosphene_num = int(self.phosphene_selection * self.phosphene_density)
+
+        topk_values, topk_indices = torch.topk(activation_values, k=constrained_phosphene_num)
 
         # Create a zeroed tensor for activation values
         zeroed_activation_values = torch.zeros_like(activation_values)
@@ -468,29 +454,63 @@ class GaussianSimulator:
         # Place top k values in the zeroed tensor
         zeroed_activation_values.scatter_(0, topk_indices, topk_values)
 
-        # TODO set threshold to 0 and compare results to method below.
-        # Ensure that top k activation values are greater than their corresponding thresholds
-        threshold_topk = threshold_values[topk_indices]  # Indexing to get corresponding thresholds
-        increase_mask = topk_values <= threshold_topk
-        topk_values[increase_mask] = threshold_topk[increase_mask] + 0.01  # Increment to be above threshold
+        print(torch.greater(topk_values,0).sum())
+        # Check which top k values are below or equal to 0 and increase only those
+        increase_mask = topk_values <= 0
+        topk_values[increase_mask] = 1e-8
 
-        # Place the adjusted top k values back into the zeroed activation tensor
+        print(torch.greater(topk_values,0).sum())
+
+        # Place the adjusted top k values into the zeroed tensor
         zeroed_activation_values.scatter_(0, topk_indices, topk_values)
 
         # Reshape back to original dimensions if necessary
         zeroed_activation_values = zeroed_activation_values.view_as(self.activation.get())
 
         # Calculate supra-threshold
-        supra_threshold = torch.greater(zeroed_activation_values, threshold_values.view_as(self.activation.get()))
+        supra_threshold = torch.greater(zeroed_activation_values, new_threshold)
 
         # supra_threshold = torch.greater(self.activation.get(), self.threshold.get()) #new_threshold
 
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
 
-        print(f"Number of phosphenes: {torch.greater(intensity, 0).sum()}") #How many phosphenes are displayed
+        print(f"Number of phosphenes: {torch.greater(intensity, 0).sum()}")  # How many phosphenes are displayed
 
-        return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1) # Return phosphene image
+        return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1)  # Return phosphene image
 
+        # # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
+        # # new_threshold = torch.full((1000, 1, 1), 0)
+        #
+        # # Fetch and flatten activation and threshold tensors
+        # activation_values = self.activation.get().flatten()  # Flattening to 1D
+        # threshold_values = self.threshold.get().flatten()  # Flattening to 1D
+        #
+        # topk_values, topk_indices = torch.topk(activation_values, k=self.phosphene_selection)
+        #
+        # # Create a zeroed tensor for activation values
+        # zeroed_activation_values = torch.zeros_like(activation_values)
+        #
+        # # Place top k values in the zeroed tensor
+        # zeroed_activation_values.scatter_(0, topk_indices, topk_values)
+        #
+        # # TODO set threshold to 0 and compare results to method below.
+        # # Ensure that top k activation values are greater than their corresponding thresholds
+        # threshold_topk = threshold_values[topk_indices]  # Indexing to get corresponding thresholds
+        # increase_mask = topk_values <= threshold_topk
+        # topk_values[increase_mask] = threshold_topk[increase_mask] + 0.01  # Increment to be above threshold
+        #
+        # # Place the adjusted top k values back into the zeroed activation tensor
+        # zeroed_activation_values.scatter_(0, topk_indices, topk_values)
+        #
+        # # Reshape back to original dimensions if necessary
+        # zeroed_activation_values = zeroed_activation_values.view_as(self.activation.get())
+        #
+        # # Calculate supra-threshold
+        # supra_threshold = torch.greater(zeroed_activation_values, threshold_values.view_as(self.activation.get()))
+        #
+        # # supra_threshold = torch.greater(self.activation.get(), self.threshold.get()) #new_threshold
+        #
+        # intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
 
     @property
     def phosphene_centers(self):
