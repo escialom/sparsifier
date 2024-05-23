@@ -96,6 +96,16 @@ class Phosphene_model(nn.Module):
         phosphene_placement_map = normalized_rescaling(phosphene_placement_map)
         phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map,
                                                                  rescale=False) #Comment out for random initialization
+
+        # flattened_map = phosphene_placement_map.view(-1)
+        # k = int(args.phosphene_selection * args.phosphene_density)
+        # topk_values, topk_indices = torch.topk(flattened_map, k)
+        # topk_values = torch.clamp(topk_values, min=0.0001)
+        # modified_map = torch.zeros_like(flattened_map)
+        # modified_map[topk_indices] = topk_values
+        # phosphene_placement_map = modified_map.view_as(phosphene_placement_map)
+        # print(topk_values)
+
         self.simulator.reset()
         optimized_im = self.simulator(phosphene_placement_map)
         optimized_im = optimized_im.unsqueeze(0)
@@ -119,6 +129,9 @@ class PhospheneTransformerNet(nn.Module):
         super(PhospheneTransformerNet, self).__init__()
         self.size = size
         self.electrode_grid = args.electrode_grid
+        self.density = int(args.phosphene_selection * args.phosphene_density) # Number of top values to consider
+        self.threshold_value = 0.525  # Value to set if top k values are below threshold
+
         self.localization = nn.Sequential(
             nn.Conv2d(1, 32, 3, stride=1, padding=0),
             nn.ReLU(),
@@ -131,12 +144,30 @@ class PhospheneTransformerNet(nn.Module):
         self.conv_padding = nn.Sequential(
             nn.Upsample((224, 224), mode='nearest'))
 
-
     def forward(self, x):
         xs = self.localization(x)
         theta = self.conv_padding(xs)
         theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
-        theta = F.sigmoid(theta)
+        theta = torch.sigmoid(theta)
+
+        # # Get the top k values and their indices
+        # topk_values, topk_indices = torch.topk(theta.view(-1), self.density)
+        #
+        # # Ensure all values in the top k are above 0, set them to threshold_value if not
+        # mask = topk_values <= 0
+        # topk_values = topk_values.clone()
+        # topk_values[mask] = self.threshold_value
+        #
+        # # Ensure all values in the top k do not go below threshold_value
+        # topk_values = torch.clamp(topk_values, min=self.threshold_value)
+        #
+        # # Create a new tensor with all values set to 0
+        # theta_flat = torch.zeros_like(theta.view(-1))
+        #
+        # # Place the modified top k values into their respective positions
+        # theta_flat[topk_indices] = topk_values
+        # theta = theta_flat.view_as(theta)
+        # print(topk_values)
 
         return theta
 

@@ -29,7 +29,7 @@ def parse_arguments():
     target = f"{abs_path}/target_images/{target_name}"  # These lines gave wrong formatting
     assert os.path.isfile(target), f"{target} does not exist!"
     test_name = os.path.splitext(target_name)[0]
-    density = 0.46
+    density = 1.0
     output_dir = f"{abs_path}/output_sketches/{test_name}/test/{density}/"  # this line gave wrong formatting
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -38,7 +38,7 @@ def parse_arguments():
     parser.add_argument("--target", default=f"{abs_path}/target_images/{target_name}", help="target image path")
     parser.add_argument("--target_file", type=str, default=target_name,
                         help="target image file, located in <target_images>")
-    parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/test/{density}",
+    parser.add_argument("--output_dir", type=str, default=f"output_sketches/{test_name}/test",
                         help="directory to save the output images and loss")
     parser.add_argument("--path_svg", type=str, default="none",
                         help="if you want to load an svg file and train from it")
@@ -78,8 +78,8 @@ def parse_arguments():
     parser.add_argument("--electrode_grid", type=int,
                         default=1024,
                         help="number of phosphenes used to generate the image, this defines the level of density.")
-    parser.add_argument("--phosphene_selection", type=int, default=190,
-                        help="Number of phosphenes to generate from electrode grid")
+    parser.add_argument("--phosphene_selection", type=int, default=1024,
+                        help="Number of phosphenes to generate from electrode grid") #190
     parser.add_argument("--phosphene_density", type=int, default=density, help="Percentage of phosphenes to be rendered")
     parser.add_argument("--attention_init", type=int, default=1,
                         help="if True, use the attention heads of CLIP")

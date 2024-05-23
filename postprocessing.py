@@ -36,7 +36,7 @@ output_path_control = f"{args.output_dir}/control_im.png"
 torchvision.utils.save_image(control_im, output_path_control)
 
 #Postprocessing
-optimized_im = Image.open(f"{args.output_dir}/best_iter.png")
+optimized_im = Image.open(f"{args.output_dir}/png_logs/png_iter290.png")
 control_im = Image.open(f"{args.output_dir}/control_im.png")
 transform = transforms.ToTensor()
 optimized_im = transform(optimized_im)
@@ -62,60 +62,61 @@ else:
     should_process = False
 
 
-# if should_process:  # Only execute this block if the flag is True
-#     target_img_power = target_img ** args.exp_postprocessing
-#     target_img_power[target_img_power == 0.] = 1e-6
-#     reference_img_power = reference_img ** args.exp_postprocessing
-#     reference_img_power[reference_img_power == 0.] = 1e-6
-#     ratio_power = reference_img_power.sum() / target_img_power.sum()
-#     target_img_rescaled = target_img * ratio_power
-#
-#     torchvision.utils.save_image(target_img_rescaled, output_path_rescaled)
-#
-#     # Combine both images side by side using make_grid
-#     combined_images = torchvision.utils.make_grid([reference_img, target_img_rescaled], nrow=2, padding=10,
-#                                                   normalize=False, scale_each=False, pad_value=0)
-#
-#     output_path_combined = f"{args.output_dir}/comparison_control_optimized.png"
-#     torchvision.utils.save_image(combined_images, output_path_combined)
-
 if should_process:  # Only execute this block if the flag is True
-    exponent_range = np.linspace(0.1, 3.0, 50)  # Sample a range of exponents
-    min_luminance_diff = float('inf')
-    best_param = 1.0
+    target_img_power = target_img ** args.exp_postprocessing
+    # target_img_power[target_img_power == 0.] = 1e-6
+    reference_img_power = reference_img ** args.exp_postprocessing
+    # reference_img_power[reference_img_power == 0.] = 1e-6
+    ratio_power = reference_img_power.sum() / target_img_power.sum()
+    print(ratio_power)
+    target_img_rescaled = target_img * ratio_power
 
-    # Calculate the total luminance of the reference image
-    reference_luminance = torch.sum(control_im)
-
-    for param in exponent_range:
-        # Adjust the target image by raising it to the power of 'param'
-        adjusted_target_img = torch.pow(optimized_im, param)
-
-        # Calculate the total luminance of the adjusted image
-        adjusted_luminance = torch.sum(adjusted_target_img)
-
-        # Calculate the difference between the reference luminance and adjusted luminance
-        luminance_diff = abs(reference_luminance - adjusted_luminance)
-
-        # Print the current parameter and luminance difference
-        print(f"param={param}, adjusted_luminance={adjusted_luminance.item()}, luminance_diff={luminance_diff.item()}")
-
-        # Update the best parameter if the current luminance difference is smaller
-        if luminance_diff < min_luminance_diff:
-            min_luminance_diff = luminance_diff
-            best_param = param +0.2  # Add 0.2 to the current parameter
-
-    # Apply the best parameter found
-    print(f"Best param found: {best_param}")
-    target_img_rescaled = torch.pow(optimized_im, best_param)
-
-    # Save the rescaled image
-    output_path_rescaled = f"{args.output_dir}/rescaled_opt_im.png"
     torchvision.utils.save_image(target_img_rescaled, output_path_rescaled)
 
     # Combine both images side by side using make_grid
-    combined_images = torchvision.utils.make_grid([control_im, target_img_rescaled], nrow=2, padding=10,
+    combined_images = torchvision.utils.make_grid([reference_img, target_img_rescaled], nrow=2, padding=10,
                                                   normalize=False, scale_each=False, pad_value=0)
 
     output_path_combined = f"{args.output_dir}/comparison_control_optimized.png"
     torchvision.utils.save_image(combined_images, output_path_combined)
+
+# if should_process:  # Only execute this block if the flag is True
+#     exponent_range = np.linspace(0.1, 3.0, 50)  # Sample a range of exponents
+#     min_luminance_diff = float('inf')
+#     best_param = 1.0
+#
+#     # Calculate the total luminance of the reference image
+#     reference_luminance = torch.sum(control_im)
+#
+#     for param in exponent_range:
+#         # Adjust the target image by raising it to the power of 'param'
+#         adjusted_target_img = torch.pow(optimized_im, param)
+#
+#         # Calculate the total luminance of the adjusted image
+#         adjusted_luminance = torch.sum(adjusted_target_img)
+#
+#         # Calculate the difference between the reference luminance and adjusted luminance
+#         luminance_diff = abs(reference_luminance - adjusted_luminance)
+#
+#         # Print the current parameter and luminance difference
+#         print(f"param={param}, adjusted_luminance={adjusted_luminance.item()}, luminance_diff={luminance_diff.item()}")
+#
+#         # Update the best parameter if the current luminance difference is smaller
+#         if luminance_diff < min_luminance_diff:
+#             min_luminance_diff = luminance_diff
+#             best_param = param +0.2  # Add 0.2 to the current parameter
+#
+#     # Apply the best parameter found
+#     print(f"Best param found: {best_param}")
+#     target_img_rescaled = torch.pow(optimized_im, best_param)
+#
+#     # Save the rescaled image
+#     output_path_rescaled = f"{args.output_dir}/rescaled_opt_im.png"
+#     torchvision.utils.save_image(target_img_rescaled, output_path_rescaled)
+#
+#     # Combine both images side by side using make_grid
+#     combined_images = torchvision.utils.make_grid([control_im, target_img_rescaled], nrow=2, padding=10,
+#                                                   normalize=False, scale_each=False, pad_value=0)
+#
+#     output_path_combined = f"{args.output_dir}/comparison_control_optimized.png"
+#     torchvision.utils.save_image(combined_images, output_path_combined)
