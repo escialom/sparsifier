@@ -61,7 +61,7 @@ brightness_saturation:
 thresholding:
   use_threshold: True
   rheobase: 23.9e-6 # The minimal current (Ampere) for infinite stimulation duration. Is used as the constant leak current.
-  activation_threshold: 9.141886000943878e-08 # Threshold of tissue activation for the perception of phosphenes
+  activation_threshold: 4.0e-8 #9.141886000943878e-08 # Threshold of tissue activation for the perception of phosphenes
   activation_threshold_sd: 6.715877869833961e-08 # Standard deviation of the tissue activation threshold (for random initialization)
 
 # Pulse width (pw), frequency (freq) default values, in case they aren't specified in the input

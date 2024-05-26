@@ -7,7 +7,9 @@
     <list default="true" id="581c47d4-0c03-4a4d-8315-42e8d29b896a" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dynaphos/config/params.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/dynaphos/config/params.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/dynaphos/simulator.py" beforeDir="false" afterPath="$PROJECT_DIR$/dynaphos/simulator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main_training.py" beforeDir="false" afterPath="$PROJECT_DIR$/main_training.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/postprocessing.py" beforeDir="false" afterPath="$PROJECT_DIR$/postprocessing.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/simplified_painter.py" beforeDir="false" afterPath="$PROJECT_DIR$/simplified_painter.py" afterDir="false" />
     </list>
@@ -157,27 +159,7 @@
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/postprocessing.py</url>
           <line>33</line>
-          <option name="timeStamp" value="111" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/postprocessing.py</url>
-          <line>82</line>
-          <option name="timeStamp" value="114" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/dynaphos/simulator.py</url>
-          <line>494</line>
-          <option name="timeStamp" value="116" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/simplified_painter.py</url>
-          <line>109</line>
-          <option name="timeStamp" value="118" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/simplified_painter.py</url>
-          <line>95</line>
-          <option name="timeStamp" value="122" />
+          <option name="timeStamp" value="124" />
         </line-breakpoint>
       </breakpoints>
       <default-breakpoints>
@@ -202,12 +184,12 @@
     <SUITE FILE_PATH="coverage/sparsifier$simplified_painter.coverage" NAME="simplified_painter Coverage Results" MODIFIED="1715773601365" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$minimal_case.coverage" NAME="minimal_case Coverage Results" MODIFIED="1712222990136" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$painter_params.coverage" NAME="painter_params Coverage Results" MODIFIED="1709815215047" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/models" />
-    <SUITE FILE_PATH="coverage/sparsifier$main_training.coverage" NAME="main_training Coverage Results" MODIFIED="1716486124572" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/sparsifier$main_training.coverage" NAME="main_training Coverage Results" MODIFIED="1716563191972" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$simulator.coverage" NAME="simulator Coverage Results" MODIFIED="1716295793634" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/dynaphos" />
-    <SUITE FILE_PATH="coverage/sparsifier$config.coverage" NAME="config Coverage Results" MODIFIED="1709044638475" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/sparsifier$config.coverage" NAME="config Coverage Results" MODIFIED="1716562841261" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$bkabka.coverage" NAME="bkabka Coverage Results" MODIFIED="1713390927609" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
     <SUITE FILE_PATH="coverage/sparsifier$loss.coverage" NAME="loss Coverage Results" MODIFIED="1713364285097" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/models" />
     <SUITE FILE_PATH="coverage/sparsifier$scratch.coverage" NAME="scratch Coverage Results" MODIFIED="1715600853124" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
-    <SUITE FILE_PATH="coverage/sparsifier$postprocessing.coverage" NAME="postprocessing Coverage Results" MODIFIED="1716477000472" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
+    <SUITE FILE_PATH="coverage/sparsifier$postprocessing.coverage" NAME="postprocessing Coverage Results" MODIFIED="1716712521344" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$" />
   </component>
 </project>

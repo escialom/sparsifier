@@ -22,7 +22,7 @@ image_paths = Path(f"{abs_path}/target_images/{args.target_name}")
 target_im, mask = get_target_and_mask(args, target_image_path=image_paths)
 
 phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(params, args.electrode_grid)
-simulator = PhospheneSimulator(params, phosphene_coords, args.phosphene_selection, args.phosphene_density)
+simulator = PhospheneSimulator(params, phosphene_coords, args.num_phosphenes_control, control_condition=args.control_condition)
 
 target_im = target_im[0, 0, :, :].numpy()
 img_sobel = sobel_processor(target_im)
@@ -36,7 +36,7 @@ output_path_control = f"{args.output_dir}/control_im.png"
 torchvision.utils.save_image(control_im, output_path_control)
 
 #Postprocessing
-optimized_im = Image.open(f"{args.output_dir}/png_logs/png_iter290.png")
+optimized_im = Image.open(f"{args.output_dir}/best_iter.png")
 control_im = Image.open(f"{args.output_dir}/control_im.png")
 transform = transforms.ToTensor()
 optimized_im = transform(optimized_im)

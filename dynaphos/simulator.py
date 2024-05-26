@@ -142,19 +142,6 @@ class Brightness(State):
         print_stats('sigmoided activation', self.state, self.verbose)
 
 
-# class Brightness(State):
-#     def __init__(self, params: dict, shape: Tuple[int, ...], verbose: Optional[bool] = False):
-#         super().__init__(params, shape, verbose)
-#         self.slope = self.to_tensor(self.params['brightness_saturation']['slope_brightness'])
-#         self.cps_half = self.to_tensor(self.params['brightness_saturation']['cps_half'])
-#         self.scale_factor = 2  # Define a scaling factor to increase brightness
-#
-#     def update(self, x: torch.Tensor):
-#         """Saturate activation values and apply a scaling factor."""
-#         self.state = sigmoid(self.slope * (x - self.cps_half)) * self.scale_factor
-#         print_stats('scaled brightness', self.state, self.verbose)
-
-
 class Sigma(State):
     def __init__(self, params: dict, shape: Tuple[int, ...],
                  magnification: torch.Tensor, verbose: Optional[bool] = False):
@@ -190,8 +177,8 @@ class GaussianSimulator:
     and allows for adjustments based on various parameters related to
     the stimulation"""
 
-    def __init__(self, params: dict, coordinates, phosphene_selection=500, phosphene_density = 1.0, rng: Optional[np.random.Generator] = None,
-                 theta: Optional[np.ndarray] = None):
+    def __init__(self, params: dict, coordinates, num_phosphenes_control=500, rng: Optional[np.random.Generator] = None,
+                 theta: Optional[np.ndarray] = None, control_condition: int = 0):
         """initialize a simulator with provided parameters settings,
         given phosphene locations in polar coordinates
 
@@ -202,9 +189,9 @@ class GaussianSimulator:
         """
 
         self.params = params
-        self.phosphene_selection = phosphene_selection
-        self.phosphene_density = phosphene_density
+        self.num_phosphenes_control = num_phosphenes_control
         self.data_kwargs = get_data_kwargs(self.params)
+        self.control_condition = control_condition
 
         rng = np.random.default_rng() if rng is None else rng
         set_deterministic(self.params['run']['seed'])
@@ -445,95 +432,25 @@ class GaussianSimulator:
         # Generate phosphene map.
         activation = self.gaussian_activation()
 
-        # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
-        supra_threshold = torch.greater(self.activation.get(), self.threshold.get())
+        if self.control_condition:  # Check if control_condition flag is true
+            print("Control condition flag is true. Control condition block is executed.")
+            activation_values = self.activation.get().flatten()
+            topk_values, topk_indices = torch.topk(activation_values, k=self.num_phosphenes_control)
+            min_value = 1e-8
+            topk_values = torch.where(topk_values == 0, torch.tensor(min_value, device=topk_values.device), topk_values)
+            zeroed_activation_values = torch.zeros_like(activation_values)
+            zeroed_activation_values.scatter_(0, topk_indices, topk_values)
+            zeroed_activation_values = zeroed_activation_values.view_as(self.activation.get())
+            print(torch.greater(topk_values, 0).sum())
+            supra_threshold = torch.greater(zeroed_activation_values, self.threshold.get())
+        else:
+            supra_threshold = torch.greater(self.activation.get(), self.threshold.get())
+
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
-        print(torch.greater(intensity,0).sum())
+        print(f"Number of phosphenes:{torch.greater(intensity,0).sum()}")
 
         # Return phosphene image.
         return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1)
-
-        # self.update(amplitude, pulse_width, frequency)
-        #
-        # # Generate phosphene map.
-        # activation = self.gaussian_activation()
-        #
-        # # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
-        # new_threshold = torch.full((self.num_phosphenes, 1, 1), 0)
-        #
-        # # Fetch and flatten activation tensors
-        # activation_values = self.activation.get().flatten() # Flattening to 1D
-
-        # constrained_phosphene_num = int(self.phosphene_selection * self.phosphene_density)
-        #
-        # # Select the top-k activation values
-        # topk_values, topk_indices = torch.topk(activation_values, k=constrained_phosphene_num)
-        #
-        # # Ensure we have exactly constrained_phosphene_num values above zero
-        # min_value = 1e-7  # Define a minimum value for activation
-        # num_non_zero = (topk_values > 0).sum().item()
-        #
-        # if num_non_zero < constrained_phosphene_num:
-        #     # If not enough, set the smallest values to a strong positive number
-        #     topk_values[num_non_zero:] = 1.0
-        #
-        # # Ensure all values are at least the minimum value
-        # topk_values = torch.maximum(topk_values, torch.tensor(min_value, device=topk_values.device))
-        #
-        # # Create a zeroed tensor for activation values
-        # zeroed_activation_values = torch.zeros_like(activation_values)
-        #
-        # # Place the adjusted top k values into the zeroed tensor
-        # zeroed_activation_values.scatter_(0, topk_indices, topk_values)
-        #
-        # # Reshape back to original dimensions if necessary
-        # zeroed_activation_values = zeroed_activation_values.view_as(self.activation.get())
-
-        # # Calculate supra-threshold
-        # supra_threshold = torch.greater(activation_values, new_threshold)
-        #
-        # intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
-        #
-        # print(f"Number of phosphenes: {torch.greater(intensity, 0).sum()}")  # How many phosphenes are displayed
-        #
-        # # Generate final phosphene image
-        # phosphene_image = torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1)
-        #
-        # return phosphene_image
-
-        # # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
-        # # new_threshold = torch.full((1000, 1, 1), 0)
-        #
-        # # Fetch and flatten activation and threshold tensors
-        # activation_values = self.activation.get().flatten()  # Flattening to 1D
-        # threshold_values = self.threshold.get().flatten()  # Flattening to 1D
-        #
-        # topk_values, topk_indices = torch.topk(activation_values, k=self.phosphene_selection)
-        #
-        # # Create a zeroed tensor for activation values
-        # zeroed_activation_values = torch.zeros_like(activation_values)
-        #
-        # # Place top k values in the zeroed tensor
-        # zeroed_activation_values.scatter_(0, topk_indices, topk_values)
-        #
-        # # TODO set threshold to 0 and compare results to method below.
-        # # Ensure that top k activation values are greater than their corresponding thresholds
-        # threshold_topk = threshold_values[topk_indices]  # Indexing to get corresponding thresholds
-        # increase_mask = topk_values <= threshold_topk
-        # topk_values[increase_mask] = threshold_topk[increase_mask] + 0.01  # Increment to be above threshold
-        #
-        # # Place the adjusted top k values back into the zeroed activation tensor
-        # zeroed_activation_values.scatter_(0, topk_indices, topk_values)
-        #
-        # # Reshape back to original dimensions if necessary
-        # zeroed_activation_values = zeroed_activation_values.view_as(self.activation.get())
-        #
-        # # Calculate supra-threshold
-        # supra_threshold = torch.greater(zeroed_activation_values, threshold_values.view_as(self.activation.get()))
-        #
-        # # supra_threshold = torch.greater(self.activation.get(), self.threshold.get()) #new_threshold
-        #
-        # intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
 
     @property
     def phosphene_centers(self):

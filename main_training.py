@@ -56,7 +56,7 @@ def main(args):
     abs_path = Path(os.path.abspath(os.getcwd()))
     # path_to_image_directory = ...
     # image_paths = os.listdir(path_to_image_directory)
-    image_paths = [Path(f"{abs_path}/target_images/camel.png"), ]
+    image_paths = [Path(f"{abs_path}/target_images/horse.png"), ]
 
     if args.display:
         epoch_range = range(args.num_iter)

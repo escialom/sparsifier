@@ -43,13 +43,13 @@ class Phosphene_model(nn.Module):
         self.text_target = args.text_target
 
         self.electrode_grid = electrode_grid
-        self.phosphene_selection = args.phosphene_selection
-        self.phosphene_density = args.phosphene_density
+        self.num_phosphenes_control = args.num_phosphenes_control
         self.phosphene_coords = cortex_models.get_visual_field_coordinates_probabilistically(self.params,
                                                                                              self.electrode_grid)
         self.stn = PhospheneTransformerNet(size=self.canvas_width, args=self.args)
         self.dynaphos = dynaphos
-        self.simulator = PhospheneSimulator(self.params, self.phosphene_coords, self.phosphene_selection, self.phosphene_density)
+        self.control_condition = args.control_condition
+        self.simulator = PhospheneSimulator(self.params, self.phosphene_coords, self.num_phosphenes_control, self.control_condition)
 
         self.cached_attention_map = None
         self.cached_clip_saliency_map = None
@@ -97,15 +97,6 @@ class Phosphene_model(nn.Module):
         phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map,
                                                                  rescale=False) #Comment out for random initialization
 
-        # flattened_map = phosphene_placement_map.view(-1)
-        # k = int(args.phosphene_selection * args.phosphene_density)
-        # topk_values, topk_indices = torch.topk(flattened_map, k)
-        # topk_values = torch.clamp(topk_values, min=0.0001)
-        # modified_map = torch.zeros_like(flattened_map)
-        # modified_map[topk_indices] = topk_values
-        # phosphene_placement_map = modified_map.view_as(phosphene_placement_map)
-        # print(topk_values)
-
         self.simulator.reset()
         optimized_im = self.simulator(phosphene_placement_map)
         optimized_im = optimized_im.unsqueeze(0)
@@ -129,8 +120,6 @@ class PhospheneTransformerNet(nn.Module):
         super(PhospheneTransformerNet, self).__init__()
         self.size = size
         self.electrode_grid = args.electrode_grid
-        self.density = int(args.phosphene_selection * args.phosphene_density) # Number of top values to consider
-        self.threshold_value = 0.525  # Value to set if top k values are below threshold
 
         self.localization = nn.Sequential(
             nn.Conv2d(1, 32, 3, stride=1, padding=0),
@@ -149,25 +138,6 @@ class PhospheneTransformerNet(nn.Module):
         theta = self.conv_padding(xs)
         theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
         theta = torch.sigmoid(theta)
-
-        # # Get the top k values and their indices
-        # topk_values, topk_indices = torch.topk(theta.view(-1), self.density)
-        #
-        # # Ensure all values in the top k are above 0, set them to threshold_value if not
-        # mask = topk_values <= 0
-        # topk_values = topk_values.clone()
-        # topk_values[mask] = self.threshold_value
-        #
-        # # Ensure all values in the top k do not go below threshold_value
-        # topk_values = torch.clamp(topk_values, min=self.threshold_value)
-        #
-        # # Create a new tensor with all values set to 0
-        # theta_flat = torch.zeros_like(theta.view(-1))
-        #
-        # # Place the modified top k values into their respective positions
-        # theta_flat[topk_indices] = topk_values
-        # theta = theta_flat.view_as(theta)
-        # print(topk_values)
 
         return theta
 
