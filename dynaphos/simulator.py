@@ -1,4 +1,6 @@
+import csv
 import math
+import os
 from typing import Optional, Tuple, Union
 
 import logging
@@ -200,6 +202,10 @@ class GaussianSimulator:
         self.deg2pix_coeff = get_deg2pix_coeff(self.params['run'])  # converts degrees to pixels
         self.phosphene_maps = \
             self.generate_phosphene_maps(coordinates, theta=theta)  # generates phosphene
+
+        # Initialize list to store number of phosphenes for each iteration
+        self.phosphenes_count_per_iteration = []
+        self.iteration_counter = 1  # Initialize an internal counter for iterations
 
         # Batch size and shape configuration
         batch_size = self.params['run']['batch_size']
@@ -411,7 +417,8 @@ class GaussianSimulator:
             'trace': self.trace.get(),
             'threshold': self.threshold.get(),
             'effective_charge_per_second':
-                self.effective_charge_per_second}
+                self.effective_charge_per_second,
+            'phosphenes_count_per_iteration': self.phosphenes_count_per_iteration}
         return state
 
     def __call__(self, amplitude: torch.Tensor, pulse_width: Optional[torch.Tensor] = None,
@@ -447,10 +454,26 @@ class GaussianSimulator:
             supra_threshold = torch.greater(self.activation.get(), self.threshold.get())
 
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
-        print(f"Number of phosphenes:{torch.greater(intensity,0).sum()}")
+
+        num_phosphenes = torch.greater(intensity, 0).sum().item()
+        print(f"Number of phosphenes: {num_phosphenes}")
+        # Store the number of phosphenes for this iteration
+        self.phosphenes_count_per_iteration.append((self.iteration_counter, num_phosphenes))
+        self.iteration_counter += 1  # Increment the internal counter
 
         # Return phosphene image.
         return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1)
+
+    def save_phosphenes_count(self, filepath: str):
+        """Save the number of phosphenes per iteration to a CSV file."""
+
+        with open(filepath, 'w', newline='') as csvfile:
+            fieldnames = ['iteration', 'num_phosphenes']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+            writer.writeheader()
+            for iteration, num_phosphenes in self.phosphenes_count_per_iteration:
+                writer.writerow({'iteration': iteration, 'num_phosphenes': num_phosphenes})
 
     @property
     def phosphene_centers(self):

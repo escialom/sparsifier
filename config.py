@@ -25,11 +25,10 @@ def parse_arguments():
     # ============ general ============
     # =================================
     abs_path = os.path.abspath(os.getcwd())
-    target_name = "horse.png"
+    target_name = "flamingo.png"
     target = f"{abs_path}/target_images/{target_name}"  # These lines gave wrong formatting
     assert os.path.isfile(target), f"{target} does not exist!"
     test_name = os.path.splitext(target_name)[0]
-    density = 0.35
     output_dir = f"{abs_path}/output_sketches/{test_name}/test/no_restrictions/"  # this line gave wrong formatting
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -79,7 +78,7 @@ def parse_arguments():
                         default=1024,
                         help="number of phosphenes used to generate the image, this defines the level of density.")
     parser.add_argument("--control_condition", type=int, default=1, help="Flag for control condition")
-    parser.add_argument("--num_phosphenes_control", type=int, default=92,
+    parser.add_argument("--num_phosphenes_control", type=int, default=109,
                         help="Number of phosphenes to generate from electrode grid") #190
     parser.add_argument("--attention_init", type=int, default=1,
                         help="if True, use the attention heads of CLIP")

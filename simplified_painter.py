@@ -49,7 +49,7 @@ class Phosphene_model(nn.Module):
         self.stn = PhospheneTransformerNet(size=self.canvas_width, args=self.args)
         self.dynaphos = dynaphos
         self.control_condition = args.control_condition
-        self.simulator = PhospheneSimulator(self.params, self.phosphene_coords, self.num_phosphenes_control, self.control_condition)
+        self.simulator = PhospheneSimulator(self.params, self.phosphene_coords, self.num_phosphenes_control, control_condition=self.control_condition)
 
         self.cached_attention_map = None
         self.cached_clip_saliency_map = None
@@ -99,6 +99,9 @@ class Phosphene_model(nn.Module):
 
         self.simulator.reset()
         optimized_im = self.simulator(phosphene_placement_map)
+        # Save the number of phosphenes per iteration to a CSV file
+        save_path = os.path.join(args.output_dir, 'phosphenes_count.csv')
+        self.simulator.save_phosphenes_count(save_path)
         optimized_im = optimized_im.unsqueeze(0)
         optimized_im = optimized_im.repeat(1, 3, 1, 1)
         optimized_im = optimized_im.permute(0, 1, 2, 3)

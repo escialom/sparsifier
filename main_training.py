@@ -56,7 +56,7 @@ def main(args):
     abs_path = Path(os.path.abspath(os.getcwd()))
     # path_to_image_directory = ...
     # image_paths = os.listdir(path_to_image_directory)
-    image_paths = [Path(f"{abs_path}/target_images/horse.png"), ]
+    image_paths = [Path(f"{abs_path}/target_images/flamingo.png"), ]
 
     if args.display:
         epoch_range = range(args.num_iter)
@@ -74,7 +74,7 @@ def main(args):
             optimized_im = phosphene_model(target_im, args)
             optimized_im.to(args.device)
 
-            target_im[target_im == 1.] = 0. #Make image background black
+            target_im[target_im == 1.] = 0.  # Make image background black
 
             losses_dict = loss_func(optimized_im, target_im, phosphene_model.parameters(), counter,
                                     optimizer)
@@ -84,7 +84,7 @@ def main(args):
 
             if epoch % args.save_interval == 0:
                 utils.plot_batch(target_im, optimized_im, f"{args.output_dir}/jpg_logs", counter,
-                                  title=f"iter{epoch}.jpg")
+                                 title=f"iter{epoch}.jpg")
                 phosphene_model.save_png(
                     f"{args.output_dir}/png_logs", f"png_iter{epoch}", optimized_im)
 
@@ -112,8 +112,8 @@ def main(args):
                             terminate = False
                             utils.plot_batch(
                                 target_im, optimized_im, args.output_dir, counter,
-                                title="best_iter.jpg")
-                            phosphene_model.save_png(args.output_dir, "best_iter", optimized_im)
+                                title=f"best_iter.jpg")
+                            phosphene_model.save_png(args.output_dir, f"best_iter", optimized_im)
 
                     if abs(cur_delta) <= min_delta:
                         if terminate:
@@ -123,10 +123,6 @@ def main(args):
                     final_config = {**vars(args), **configs_to_save}
                     np.save(f"{args.output_dir}/config.npy", final_config)
                     plotting_loss(args)
-
-            if counter == 0 and args.attention_init:
-                attention_map, clip_saliency_map = phosphene_model.get_clip_saliency_map(args, target_im)
-                plot_saliency_map(target_im, attention_map, clip_saliency_map)
 
         counter += 1
 
