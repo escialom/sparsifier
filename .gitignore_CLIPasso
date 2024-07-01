@@ -1,0 +1,19 @@
+<<<<<<< HEAD
+__pycache__/
+output_sketches/
+U2Net_/
+=======
+.ipynb_checkpoints
+__pycache__
+
+clips/
+**[Aa]rchived
+.idea/
+
+/dist/
+/dynaphos.egg-info/
+*.mp4
+*.avi
+/scratch/
+*.pickle
+>>>>>>> dynaphos/main
