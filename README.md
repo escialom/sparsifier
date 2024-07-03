@@ -49,7 +49,7 @@ cd CLIPasso
 ```bash
 python3.7 -m venv clipsketch
 source clipsketch/bin/activate
-pip install -r requirements_phos_opt.txt
+pip install -r requirements.txt
 pip install torch==1.7.1+cu101 torchvision==0.8.2+cu101 -f https://download.pytorch.org/whl/torch_stable.html
 pip install git+https://github.com/openai/CLIP.git
 ```
