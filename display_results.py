@@ -14,7 +14,7 @@ from PIL import Image
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--target_file", type=str,
-                    help="target image file, located in <target_images>")
+                    help="target image file, located in <input_images>")
 parser.add_argument("--num_strokes", type=int)
 args = parser.parse_args()
 

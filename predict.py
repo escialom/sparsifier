@@ -28,8 +28,8 @@ from torchvision import transforms
 from tqdm import tqdm
 
 import sketch_utils as utils
-from Clipasso.models.loss import Loss
-from Clipasso.models.painter_params import Painter, PainterOptimizer
+from clipasso.models.loss import Loss
+from clipasso.models.painter_params import Painter, PainterOptimizer
 
 
 class Predictor(BasePredictor):

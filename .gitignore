@@ -5,7 +5,7 @@ __pycache__
 clips/
 **[Aa]rchived
 .idea/
-/Clipasso/U2Net_/saved_models/u2net.pth
+/clipasso/U2Net_/saved_models/u2net.pth
 /dist/
 /dynaphos.egg-info/
 *.mp4

@@ -1,5 +1,5 @@
 import random
-import Clipasso.CLIP_.clip as clip
+import clipasso.CLIP_.clip as clip
 import numpy as np
 import pydiffvg
 import sketch_utils as utils

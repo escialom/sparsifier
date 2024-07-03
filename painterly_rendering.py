@@ -18,8 +18,8 @@ from tqdm.auto import tqdm
 
 import config
 import sketch_utils as utils
-from Clipasso.models.loss import Loss
-from Clipasso.models.painter_params import Painter, PainterOptimizer
+from clipasso.models.loss import Loss
+from clipasso.models.painter_params import Painter, PainterOptimizer
 
 
 def load_renderer(args, target_im=None, mask=None):
