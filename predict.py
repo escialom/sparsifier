@@ -11,34 +11,25 @@ warnings.simplefilter('ignore')
 from cog import BasePredictor, Input, Path
 import subprocess as sp
 import os
-import re
 
-import imageio
-import matplotlib.pyplot as plt
 import numpy as np
 import pydiffvg
 import torch
 from PIL import Image
-import multiprocessing as mp
 from shutil import copyfile
 
-import argparse
-import math
 import sys
 import time
 import traceback
 
 import PIL
-import torch.nn as nn
-import torch.nn.functional as F
 import wandb
-from torchvision import models, transforms
+from torchvision import transforms
 from tqdm import tqdm
 
-import config
 import sketch_utils as utils
-from models.loss import Loss
-from models.painter_params import Painter, PainterOptimizer
+from Clipasso.models.loss import Loss
+from Clipasso.models.painter_params import Painter, PainterOptimizer
 
 
 class Predictor(BasePredictor):
@@ -88,7 +79,7 @@ class Predictor(BasePredictor):
         
         for seed in seeds:
             wandb_name = f"{test_name}_{num_strokes}strokes_seed{seed}"
-            sp.run(["python", "config.py", target,
+            sp.run(["python", "model_config.py", target,
                         "--num_paths", str(num_strokes),
                         "--output_dir", output_dir,
                         "--wandb_name", wandb_name,

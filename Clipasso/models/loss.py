@@ -1,6 +1,6 @@
 
 import collections
-import CLIP_.clip as clip
+import Clipasso.CLIP_.clip as clip
 import torch
 import torch.nn as nn
 from torchvision import models, transforms

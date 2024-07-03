@@ -16,13 +16,13 @@ from dynaphos.cortex_models import \
 
 
 def get_random(resolution, num_phosphenes, num_frames=1000):
-    params = load_params('../config/config_dynaphos/params.yaml')
+    params = load_params('../../config/config_dynaphos/params.yaml')
     data_kwargs = get_data_kwargs(params)
     rng = np.random.default_rng(seed=params['run']['seed'])
     params['run']['resolution'] = list(resolution)
     shape = [num_frames] + params['run']['resolution']
     coordinates_cortex = load_coordinates_from_yaml(
-        '../config/config_dynaphos/grid_coords_dipole_valid.yaml', num_phosphenes, rng)
+        '../../config/config_dynaphos/grid_coords_dipole_valid.yaml', num_phosphenes, rng)
     coordinates_cortex = Map(*coordinates_cortex)
     coordinates_visual_field = get_visual_field_coordinates_from_cortex_full(
         params['cortex_model'], coordinates_cortex, rng)
