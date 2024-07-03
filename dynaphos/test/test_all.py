@@ -15,7 +15,7 @@ from dynaphos.utils import (to_tensor, to_numpy, get_data_kwargs, load_params,
                             load_coordinates_from_yaml, Map)
 
 
-PARAMS_PATH = '../config/params.yaml'
+PARAMS_PATH = '../config/config_dynaphos/params.yaml'
 MAPPING_MODELS = ['monopole', 'dipole', 'wedge-dipole']
 
 
@@ -37,7 +37,7 @@ def simulator(params, rng):
 
 def get_simulator(params, rng):
     coordinates_cortex = load_coordinates_from_yaml(
-        '../config/grid_coords_dipole_valid.yaml', n_coordinates=100, rng=rng)
+        '../config/config_dynaphos/grid_coords_dipole_valid.yaml', n_coordinates=100, rng=rng)
     coordinates_cortex = Map(*coordinates_cortex)
     coordinates_visual_field = get_visual_field_coordinates_from_cortex_full(
         params['cortex_model'], coordinates_cortex, rng)
