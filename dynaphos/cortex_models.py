@@ -54,17 +54,21 @@ def get_visual_field_coordinates_from_cortex_full(
 
 
 def get_visual_field_coordinates_probabilistically(
-        params: dict, n_phosphenes: int,
+        params: dict, n_phosphenes: int, use_seed = False,
         rng: Optional[np.random.Generator] = None) -> Map:
     """Generate a number of phosphene locations probabilistically.
 
     :param params: Model parameters.
     :param n_phosphenes: Number of phosphenes.
+    :param use_seed: boolean. Whether we use a seed for the random generator
     :param rng: Numpy random number generator.
     :return: Polar coordinates of n_phosphenes phosphenes.
     """
     if rng is None:
         rng = np.random.default_rng()
+
+    if use_seed:
+        np.random.seed(params['run']['seed'])
 
     max_r = params['run']['view_angle'] / 2
     min_r = params['run']['min_angle']
