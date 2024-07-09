@@ -45,6 +45,7 @@ def parse_arguments():
     # =================================
     # =========== training ============
     # =================================
+    parser.add_argument("train_set", help="path of the training set")
     parser.add_argument("--num_iter", type=int, default=500,
                         help="number of optimization iterations")
     parser.add_argument("--num_stages", type=int, default=1,

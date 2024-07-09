@@ -17,7 +17,7 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 
 import config
-import sketch_utils as utils
+from clipasso import sketch_utils as utils
 from clipasso.models.loss import Loss
 from clipasso.models.painter_params import Painter, PainterOptimizer
 
@@ -33,8 +33,8 @@ def load_renderer(args, target_im=None, mask=None):
     return renderer
 
 
-def get_target(args):
-    target = Image.open(args.target)
+def get_target(args, target):
+    target = Image.open(target)
     if target.mode == "RGBA":
         # Create a white rgba background
         new_image = Image.new("RGBA", target.size, "WHITE")

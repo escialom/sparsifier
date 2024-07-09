@@ -3,7 +3,7 @@ import os
 import imageio
 import matplotlib.pyplot as plt
 import numpy as np
-import pydiffvg
+#import pydiffvg
 import skimage
 import skimage.io
 import torch
@@ -14,7 +14,7 @@ from torchvision import transforms
 from torchvision.utils import make_grid
 from skimage.transform import resize
 
-from clipasso.U2Net_ import U2NET
+from clipasso.U2Net_.saved_models import u2net
 
 
 def imwrite(img, filename, gamma=2.2, normalize=False, use_wandb=False, wandb_name="", step=0, input_im=None):
@@ -259,7 +259,7 @@ def get_mask_u2net(args, pil_im):
 
     input_im_trans = data_transforms(pil_im).unsqueeze(0).to(args.device)
 
-    model_dir = os.path.join("clipasso/U2Net_/saved_models/u2net.pth")
+    model_dir = os.path.join("U2Net_/saved_models/u2net.pth")
     net = U2NET(3, 1)
     if torch.cuda.is_available() and args.use_gpu:
         net.load_state_dict(torch.load(model_dir))
@@ -292,3 +292,11 @@ def get_mask_u2net(args, pil_im):
     im_final = Image.fromarray(im_final)
 
     return im_final, predict
+
+
+def count_model_params(model):
+    parameters = model.parameters()
+    param_count = 0
+    for layer in parameters:
+        param_count += torch.numel(layer)
+    return param_count

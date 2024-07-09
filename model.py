@@ -26,7 +26,7 @@ class SaliencyMap(torch.nn.Module):
         self.softmax_temp = args.softmax_temp
 
     def __call__(self):
-        input_image = input_image[input_image == 0.] = 1. # background should be white
+        input_image = input_image[input_image == 0.] = 1. # background should be white for saliency map
         input_image_preprocessed = clipasso_model.Painter.define_attention_input(input_image)
         clip_attention_map = clipasso_model.Painter.clip_attn()
         contour_extractor = clipasso_model.XDoG_()
