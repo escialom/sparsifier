@@ -67,31 +67,6 @@ class MiniConvNet(nn.Module):
 
         return theta
 
-# class PhospheneTransformerNet(nn.Module):
-#     def __init__(self, size, args):
-#         super(PhospheneTransformerNet, self).__init__()
-#         self.size = size
-#         self.electrode_grid = args.electrode_grid
-#
-#         self.localization = nn.Sequential(
-#             nn.Conv2d(1, 32, 3, stride=1, padding=0),
-#             nn.ReLU(),
-#             nn.Conv2d(32, 64, 3, stride=2, padding=0),
-#             nn.ReLU(),
-#             nn.Conv2d(64, 1, 3, stride=1, padding=0),
-#             nn.ReLU()
-#         )
-#
-#         self.conv_padding = nn.Sequential(
-#             nn.Upsample((224, 224), mode='nearest'))
-#
-#     def forward(self, x):
-#         xs = self.localization(x)
-#         theta = self.conv_padding(xs)
-#         theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
-#         theta = torch.sigmoid(theta)
-#
-#         return theta
 
 class PhospheneOptimizer(nn.Module):
     def __init__(self, model_params,
@@ -106,6 +81,8 @@ class PhospheneOptimizer(nn.Module):
         self.phosphene_coords = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(self.simulator_params, self.electrode_grid, self.use_seed)
         self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords)
         self.get_learnable_params = MiniConvNet(self.model_params)
+        self.init_weights = torch.load("./init_weights.pth")
+        self.get_learnable_params.load_state_dict(self.init_weights, strict=False)
         self.extract_saliency_map = SaliencyMap(self.model_params, requires_grad=True)
 
         # self.clip_model, self.preprocess = clip.load(self.model_params.saliency_clip_model, device=self.model_params.device,
@@ -116,8 +93,8 @@ class PhospheneOptimizer(nn.Module):
         clip_attention_map, saliency_map = self.extract_saliency_map(input_image)
         phosphene_placement_map = self.get_learnable_params(saliency_map.unsqueeze(0).unsqueeze(0))
         # Make the phosphene_placement_map as a stimulation vector for the phosphene simulator
-        # phosphene_placement_map = self.normalized_rescaling(phosphene_placement_map)
-        phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map, rescale=True)
+        phosphene_placement_map = self.normalized_rescaling(phosphene_placement_map)
+        phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map, rescale=False)
         self.simulator.reset()
         optimized_im = self.simulator(phosphene_placement_map)
         optimized_im = optimized_im.unsqueeze(0)
