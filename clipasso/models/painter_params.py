@@ -1,7 +1,6 @@
 import random
 import clipasso.CLIP_.clip as clip
 import numpy as np
-import pydiffvg
 from clipasso import sketch_utils as utils
 import torch
 import torch.nn as nn
@@ -63,48 +62,6 @@ class Painter(torch.nn.Module):
         self.strokes_counter = 0 # counts the number of calls to "get_path"        
         self.epoch = 0
         self.final_epoch = args.num_iter - 1
-        
-
-    def init_image(self, stage=0):
-        if stage > 0:
-            # if multi stages training than add new strokes on existing ones
-            # don't optimize on previous strokes
-            self.optimize_flag = [False for i in range(len(self.shapes))]
-            for i in range(self.strokes_per_stage):
-                stroke_color = torch.tensor([0.0, 0.0, 0.0, 1.0])
-                path = self.get_path()
-                self.shapes.append(path)
-                path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
-                                                    fill_color = None,
-                                                    stroke_color = stroke_color)
-                self.shape_groups.append(path_group)
-                self.optimize_flag.append(True)
-
-        else:
-            num_paths_exists = 0
-            if self.path_svg != "none":
-                self.canvas_width, self.canvas_height, self.shapes, self.shape_groups = utils.load_svg(self.path_svg)
-                # if you want to add more strokes to existing ones and optimize on all of them
-                num_paths_exists = len(self.shapes)
-
-            for i in range(num_paths_exists, self.num_paths):
-                stroke_color = torch.tensor([0.0, 0.0, 0.0, 1.0])
-                path = self.get_path()
-                self.shapes.append(path)
-                path_group = pydiffvg.ShapeGroup(shape_ids = torch.tensor([len(self.shapes) - 1]),
-                                                    fill_color = None,
-                                                    stroke_color = stroke_color)
-                self.shape_groups.append(path_group)        
-            self.optimize_flag = [True for i in range(len(self.shapes))]
-        
-        img = self.render_warp()
-        img = img[:, :, 3:4] * img[:, :, :3] + torch.ones(img.shape[0], img.shape[1], 3, device = self.device) * (1 - img[:, :, 3:4])
-        img = img[:, :, :3]
-        # Convert img from HWC to NCHW
-        img = img.unsqueeze(0)
-        img = img.permute(0, 3, 1, 2).to(self.device) # NHWC -> NCHW
-        return img
-        # utils.imwrite(img.cpu(), '{}/init.png'.format(args.output_dir), gamma=args.gamma, use_wandb=args.use_wandb, wandb_name="init")
 
     def get_image(self):
         img = self.render_warp()
@@ -114,53 +71,6 @@ class Painter(torch.nn.Module):
         # Convert img from HWC to NCHW
         img = img.unsqueeze(0)
         img = img.permute(0, 3, 1, 2).to(self.device) # NHWC -> NCHW
-        return img
-
-    def get_path(self):
-        points = []
-        self.num_control_points = torch.zeros(self.num_segments, dtype = torch.int32) + (self.control_points_per_seg - 2)
-        p0 = self.inds_normalised[self.strokes_counter] if self.attention_init else (random.random(), random.random())
-        points.append(p0)
-
-        for j in range(self.num_segments):
-            radius = 0.05
-            for k in range(self.control_points_per_seg - 1):
-                p1 = (p0[0] + radius * (random.random() - 0.5), p0[1] + radius * (random.random() - 0.5))
-                points.append(p1)
-                p0 = p1
-        points = torch.tensor(points).to(self.device)
-        points[:, 0] *= self.canvas_width
-        points[:, 1] *= self.canvas_height
-        
-        path = pydiffvg.Path(num_control_points = self.num_control_points,
-                                points = points,
-                                stroke_width = torch.tensor(self.width),
-                                is_closed = False)
-        self.strokes_counter += 1
-        return path
-
-    def render_warp(self):
-        if self.opacity_optim:
-            for group in self.shape_groups:
-                group.stroke_color.data[:3].clamp_(0., 0.) # to force black stroke
-                group.stroke_color.data[-1].clamp_(0., 1.) # opacity
-                # group.stroke_color.data[-1] = (group.stroke_color.data[-1] >= self.color_vars_threshold).float()
-        _render = pydiffvg.RenderFunction.apply
-        # uncomment if you want to add random noise
-        if self.add_random_noise:
-            if random.random() > self.noise_thresh:
-                eps = 0.01 * min(self.canvas_width, self.canvas_height)
-                for path in self.shapes:
-                    path.points.data.add_(eps * torch.randn_like(path.points))
-        scene_args = pydiffvg.RenderFunction.serialize_scene(\
-            self.canvas_width, self.canvas_height, self.shapes, self.shape_groups)
-        img = _render(self.canvas_width, # width
-                    self.canvas_height, # height
-                    2,   # num_samples_x
-                    2,   # num_samples_y
-                    0,   # seed
-                    None,
-                    *scene_args)
         return img
     
     def parameters(self):
@@ -186,10 +96,6 @@ class Painter(torch.nn.Module):
 
     def get_color_parameters(self):
         return self.color_vars
-        
-    def save_svg(self, output_dir, name):
-        pydiffvg.save_svg('{}/{}.svg'.format(output_dir, name), self.canvas_width, self.canvas_height, self.shapes, self.shape_groups)
-
 
     def dino_attn(self):
         patch_size=8 # dino hyperparameter

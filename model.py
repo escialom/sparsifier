@@ -2,22 +2,22 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-import config
+import config.model_config as model_config
 import clipasso.CLIP_.clip as clip
 from clipasso.models import painter_params as clipasso_model
 import dynaphos
 from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
 
 # Load model and phosphene simulator parameters
-model_params = config.model_config.parse_arguments()
+model_params = model_config.parse_arguments()
 abs_path = os.path.abspath(os.getcwd())
-simulator_params = dynaphos.utils.load_params(f"{abs_path}/dynaphos/config/params.yaml")
+simulator_params = dynaphos.utils.load_params(f"{abs_path}/config/config_dynaphos/params.yaml")
 
 
 class SaliencyMap(torch.nn.Module):
     def __init__(self, args,
-                 input_image = None,
-                 device = None):
+                 input_image,
+                 device=None):
         super(SaliencyMap, self).__init__()
 
         self.args = args
@@ -79,8 +79,8 @@ class PhospheneOptimizer(nn.Module):
         self.device = device
         self.saliency_clip_model = model_params.saliency_clip_model
         self.text_target = model_params.text_target
-        self.clip_model, self.preprocess = clip.load(self.saliency_clip_model, device=self.device, jit=False)
-        self.clip_model.eval().to(self.device)
+        #self.clip_model, self.preprocess = clip.load(self.saliency_clip_model, device=self.device, jit=False)
+        #self.clip_model.eval().to(self.device)
 
     def forward(self, input_image): #clip_attention_map, saliency_map_soft --> attention_map, saliency_map
         clip_attention_map, saliency_map = SaliencyMap(input_image)

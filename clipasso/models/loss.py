@@ -46,7 +46,7 @@ class Loss(nn.Module):
                 if epoch > self.start_clip:
                     self.losses_to_apply.append("clip")
 
-    def forward(self, sketches, targets, epoch, mode="train"):
+    def forward(self, sketches, targets, color_parameters, epoch, points_optim=None, mode="train"):
         loss = 0
         self.update_losses_to_apply(epoch)
 

@@ -3,10 +3,10 @@ import os
 import random
 
 import numpy as np
-import pydiffvg
 import torch
 import wandb
 
+abs_path = os.path.abspath(os.getcwd())
 
 def set_seed(seed):
     random.seed(seed)
@@ -22,9 +22,8 @@ def parse_arguments():
     # =================================
     # ============ general ============
     # =================================
-    parser.add_argument("target", help="target image path")
-    parser.add_argument("--output_dir", type=str,
-                        help="directory to save the output images and loss")
+    parser.add_argument("--target", help="target image path")
+    parser.add_argument("--output_dir", type=str, default="output")
     parser.add_argument("--path_svg", type=str, default="none",
                         help="if you want to load an svg file and train from it")
     parser.add_argument("--use_gpu", type=int, default=0)
@@ -45,7 +44,7 @@ def parse_arguments():
     # =================================
     # =========== training ============
     # =================================
-    parser.add_argument("train_set", help="path of the training set")
+    parser.add_argument("--train_set", type=str, default= f"{abs_path}\data")
     parser.add_argument("--num_iter", type=int, default=500,
                         help="number of optimization iterations")
     parser.add_argument("--num_stages", type=int, default=1,
@@ -55,7 +54,7 @@ def parse_arguments():
     parser.add_argument("--color_lr", type=float, default=0.01)
     parser.add_argument("--color_vars_threshold", type=float, default=0.0)
     parser.add_argument("--batch_size", type=int, default=1,
-                        help="for optimization it's only one image")
+                        help="for optimization it's only one image") #default=1
     parser.add_argument("--save_interval", type=int, default=10)
     parser.add_argument("--eval_interval", type=int, default=10)
     parser.add_argument("--image_scale", type=int, default=224)
@@ -102,7 +101,7 @@ def parse_arguments():
     parser.add_argument("--clip_conv_loss_type", type=str, default="L2")
     parser.add_argument("--clip_conv_layer_weights",
                         type=str, default="0,0,1.0,1.0,0")
-    parser.add_argument("--clip_model_name", type=str, default="RN101")
+    parser.add_argument("--clip_model_name", type=str, default="RN50") # default="RN101"
     parser.add_argument("--clip_fc_loss_weight", type=float, default=0.1)
     parser.add_argument("--clip_text_guide", type=float, default=0)
     parser.add_argument("--text_target", type=str, default="none")
@@ -113,7 +112,6 @@ def parse_arguments():
     args.clip_conv_layer_weights = [
         float(item) for item in args.clip_conv_layer_weights.split(',')]
 
-    args.output_dir = os.path.join(args.output_dir, args.wandb_name)
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
@@ -133,8 +131,6 @@ def parse_arguments():
             torch.cuda.is_available() and torch.cuda.device_count() > 0) else "cpu")
     else:
         args.device = torch.device("cpu")
-    pydiffvg.set_use_gpu(torch.cuda.is_available() and args.use_gpu)
-    pydiffvg.set_device(args.device)
     return args
 
 

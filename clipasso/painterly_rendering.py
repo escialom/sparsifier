@@ -34,7 +34,7 @@ def load_renderer(args, target_im=None, mask=None):
 
 
 def get_target(args, target):
-    target = Image.open(target)
+    #target = Image.open(target)
     if target.mode == "RGBA":
         # Create a white rgba background
         new_image = Image.new("RGBA", target.size, "WHITE")
