@@ -13,53 +13,58 @@ from torchvision import transforms
 
 
 class Painter(torch.nn.Module):
+    # def __init__(self, args,
+    #             num_strokes=4,
+    #             num_segments=4,
+    #             imsize=224,
+    #             device=None,
+    #             target_im=None,
+    #             mask=None):
+    #     super(Painter, self).__init__()
+
     def __init__(self, args,
-                num_strokes=4,
-                num_segments=4,
-                imsize=224,
                 device=None,
-                target_im=None,
                 mask=None):
         super(Painter, self).__init__()
 
         self.args = args
-        self.num_paths = num_strokes
-        self.num_segments = num_segments
-        self.width = args.width
-        self.control_points_per_seg = args.control_points_per_seg
-        self.opacity_optim = args.force_sparse
-        self.num_stages = args.num_stages
-        self.add_random_noise = "noise" in args.augemntations
+        # self.num_paths = num_strokes
+        # self.num_segments = num_segments UNTIL HERE
+        # self.width = args.width
+        # self.control_points_per_seg = args.control_points_per_seg
+        # self.opacity_optim = args.force_sparse
+        # self.num_stages = args.num_stages
+        # self.add_random_noise = "noise" in args.augemntations
         self.noise_thresh = args.noise_thresh
         self.softmax_temp = args.softmax_temp
 
         self.shapes = []
         self.shape_groups = []
         self.device = device
-        self.canvas_width, self.canvas_height = imsize, imsize
+        # self.canvas_width, self.canvas_height = imsize, imsize KEEP COMMENTED
         self.points_vars = []
         self.color_vars = []
-        self.color_vars_threshold = args.color_vars_threshold
+        # self.color_vars_threshold = args.color_vars_threshold
 
         self.path_svg = args.path_svg
-        self.strokes_per_stage = self.num_paths
+        # self.strokes_per_stage = self.num_paths KEEP COMMENTED
         self.optimize_flag = []
 
         # attention related for strokes initialisation
         self.attention_init = args.attention_init
-        self.target_path = args.target
+        # self.target_path = args.target
         self.saliency_model = args.saliency_model
         self.xdog_intersec = args.xdog_intersec
         self.mask_object = args.mask_object_attention
-        
+
         self.text_target = args.text_target # for clip gradients
         self.saliency_clip_model = args.saliency_clip_model
-        self.define_attention_input(target_im)
+        # self.define_attention_input(target_im) KEEP COMMENTED
         self.mask = mask
-        self.attention_map = self.set_attention_map() if self.attention_init else None
-        
-        self.thresh = self.set_attention_threshold_map() if self.attention_init else None
-        self.strokes_counter = 0 # counts the number of calls to "get_path"        
+        # self.attention_map = self.set_attention_map() if self.attention_init else None KEEP COMMENTED
+
+        # self.thresh = self.set_attention_threshold_map() if self.attention_init else None KEEP COMMENTED
+        # self.strokes_counter = 0 # counts the number of calls to "get_path" KEEP COMMENTED
         self.epoch = 0
         self.final_epoch = args.num_iter - 1
 
@@ -72,7 +77,7 @@ class Painter(torch.nn.Module):
         img = img.unsqueeze(0)
         img = img.permute(0, 3, 1, 2).to(self.device) # NHWC -> NCHW
         return img
-    
+
     def parameters(self):
         self.points_vars = []
         # storkes' location optimization
@@ -81,10 +86,10 @@ class Painter(torch.nn.Module):
                 path.points.requires_grad = True
                 self.points_vars.append(path.points)
         return self.points_vars
-    
+
     def get_points_parans(self):
         return self.points_vars
-    
+
     def set_color_parameters(self):
         # for storkes' color optimization (opacity)
         self.color_vars = []
@@ -110,13 +115,13 @@ class Painter(torch.nn.Module):
             ])
 
         dino_model = torch.hub.load('facebookresearch/dino:main', 'dino_vits8').eval().to(self.device)
-        
+
         self.main_im = Image.open(self.target_path).convert("RGB")
         main_im_tensor = totens(self.main_im).to(self.device)
         img = (main_im_tensor.unsqueeze(0) - mean_imagenet) / std_imagenet
         w_featmap = img.shape[-2] // patch_size
         h_featmap = img.shape[-1] // patch_size
-        
+
         with torch.no_grad():
             attn = dino_model.get_last_selfattention(img).detach().cpu()[0]
 
@@ -131,10 +136,10 @@ class Painter(torch.nn.Module):
             th_attn[head] = th_attn[head][idx2[head]]
         th_attn = th_attn.reshape(nh, w_featmap, h_featmap).float()
         th_attn = nn.functional.interpolate(th_attn.unsqueeze(0), scale_factor=patch_size, mode="nearest")[0].cpu()
-        
+
         attn = attn.reshape(nh, w_featmap, h_featmap).float()
         attn = nn.functional.interpolate(attn.unsqueeze(0), scale_factor=patch_size, mode="nearest")[0].cpu()
-        
+
         return attn
 
 
@@ -144,10 +149,13 @@ class Painter(torch.nn.Module):
         data_transforms = transforms.Compose([
                     preprocess.transforms[-1],
                 ])
-        self.image_input_attn_clip = data_transforms(target_im).to(self.device)
-        
+        # Background should be white
+        target_im[target_im == 0.] = 1.
+        image_input_attn_clip = data_transforms(target_im).to(self.device)
+        return image_input_attn_clip
 
-    def clip_attn(self):
+
+    def clip_attn(self, image_input_attn_clip):
         model, preprocess = clip.load(self.saliency_clip_model, device=self.device, jit=False)
         model.eval().to(self.device)
         text_input = clip.tokenize([self.text_target]).to(self.device)
@@ -165,7 +173,7 @@ class Painter(torch.nn.Module):
 
         else:
             # attn_map = interpret(self.image_input_attn_clip, text_input, model, device=self.device, index=0).astype(np.float32)
-            attn_map = interpret(self.image_input_attn_clip, text_input, model, device=self.device)
+            attn_map = interpret(image_input_attn_clip, text_input, model, device=self.device)
             
         del model
         return attn_map
