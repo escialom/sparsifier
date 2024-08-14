@@ -145,7 +145,10 @@ class Sigma(State):
         p = self.params['size']
         if p['size_equation'] == 'sqrt':  # Tehovnik 2007
             def f(x):
-                return torch.sqrt(torch.div(x, p['current_spread']))
+                division_result = torch.div(x, p['current_spread'])
+                # Clamp values to avoid division by zero during backprop
+                division_result = torch.clamp(division_result, min=1e-8)
+                return torch.sqrt(division_result)
         elif p['size_equation'] == 'sigmoid':  # Bosking et al., 2017
             def f(x):
                 return 0.5 * p['MD'] * sigmoid(p['slope_size'] *
@@ -365,8 +368,13 @@ class GaussianSimulator:
         """
 
         # Calculate normalized Gaussian (peak has value 1).
-        sigma = self.sigma.get().clamp(1e-22, None)  # TODO: clamping redundant? Default division by zero gives inf.
-        exp = torch.exp(-0.5 * (self.phosphene_maps / sigma) ** 2)
+        sigma = self.sigma.get().clamp(min=1e-6, max=1e6)
+        # Clamp exponent
+        exponent = -0.5 * (self.phosphene_maps / sigma) ** 2
+        exponent = torch.clamp(exponent, min=-20, max=20)
+        exp = torch.exp(exponent)
+        # Clamp the output of the exponential function to ensure it doesn't fall below 1e-8
+        exp = torch.clamp(exp, min=1e-8)
         return exp
 
     def get_state(self):

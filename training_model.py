@@ -4,7 +4,8 @@ import sys
 
 import numpy as np
 from torchvision import transforms
-from torch.utils.data import DataLoader, Dataset
+import torch.nn.utils as utils
+from torch.utils.data import DataLoader
 from torchvision.datasets import ImageFolder
 from tqdm.auto import tqdm
 
@@ -15,6 +16,7 @@ from model import PhospheneOptimizer
 from clipasso.models.loss import Loss
 from clipasso import painterly_rendering
 
+torch.autograd.set_detect_anomaly(True)
 
 def main(model_params):
 
@@ -34,20 +36,26 @@ def main(model_params):
     else:
         epoch_range = tqdm(range(model_params.num_iter))
     for epoch in epoch_range:
+        counter = 0
         for batch in train_loader:
+            if counter > 0:
+                break
             losses = []
             batch_losses = []
             # we loop over samples in the batch as clipasso expect only one sample as input
-            for sample in batch:
+            images = batch[0]
+            for sample in images:
                 # Data preprocessing and augmentation performed by clipasso from PIL images
                 input_img = to_pil(sample.squeeze(0))
                 input_img, mask = clipasso.painterly_rendering.get_target(model_params, input_img)
+                # input_img[input_img == 0.] = 1. # It was because of Xdog which would produce weird saliency maps
                 input_img = input_img.to(model_params.device)
                 optimizer.zero_grad()
                 output_img = model(input_img)
-                # output_img[output_img == 1.] = 0.  # Make image background black
+                # output_img[output_img == 1.] = 0.  # Turn it back to black
                 losses_dict = loss_func(output_img, input_img, model.parameters(), epoch, optimizer)
                 losses.append(sum(losses_dict.values()))
+            counter =+ 1
             # Average loss over samples in the batch
             loss = sum(losses) / len(losses)
             loss.backward()

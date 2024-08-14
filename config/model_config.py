@@ -45,12 +45,12 @@ def parse_arguments():
     # =========== training ============
     # =================================
     parser.add_argument("--train_set", type=str, default= f"{abs_path}\data")
-    parser.add_argument("--num_iter", type=int, default=500,
+    parser.add_argument("--num_iter", type=int, default=3,
                         help="number of optimization iterations")
     parser.add_argument("--num_stages", type=int, default=1,
                         help="training stages, you can train x strokes, then freeze them and train another x strokes etc.")
     parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=1.0)
+    parser.add_argument("--lr", type=float, default=0.0001) #0.00001
     parser.add_argument("--color_lr", type=float, default=0.01)
     parser.add_argument("--color_vars_threshold", type=float, default=0.0)
     parser.add_argument("--batch_size", type=int, default=1,
