@@ -6,7 +6,6 @@ import numpy as np
 import torch
 import wandb
 
-abs_path = os.path.abspath(os.getcwd())
 
 def set_seed(seed):
     random.seed(seed)
@@ -44,7 +43,8 @@ def parse_arguments():
     # =================================
     # =========== training ============
     # =================================
-    parser.add_argument("--train_set", type=str, default= f"{abs_path}\data")
+    parser.add_argument("--train_set", type=str, default="./data/train_set")
+    parser.add_argument("--val_set", type=str, default="./data/val_set")
     parser.add_argument("--num_iter", type=int, default=3,
                         help="number of optimization iterations")
     parser.add_argument("--num_stages", type=int, default=1,
@@ -54,7 +54,7 @@ def parse_arguments():
     parser.add_argument("--color_lr", type=float, default=0.01)
     parser.add_argument("--color_vars_threshold", type=float, default=0.0)
     parser.add_argument("--batch_size", type=int, default=1,
-                        help="for optimization it's only one image") #default=1
+                        help="for optimization it's only one image")
     parser.add_argument("--save_interval", type=int, default=10)
     parser.add_argument("--eval_interval", type=int, default=10)
     parser.add_argument("--image_scale", type=int, default=224)
