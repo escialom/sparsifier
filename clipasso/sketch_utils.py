@@ -293,7 +293,7 @@ def get_mask_u2net(args, pil_im):
     return im_final, predict
 
 
-def count_model_params(model):
+def count_args(model):
     parameters = model.parameters()
     param_count = 0
     for layer in parameters:

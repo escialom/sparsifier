@@ -56,7 +56,7 @@ def parse_arguments():
     parser.add_argument("--batch_size", type=int, default=1,
                         help="for optimization it's only one image")
     parser.add_argument("--save_interval", type=int, default=10)
-    parser.add_argument("--eval_interval", type=int, default=10)
+    parser.add_argument("--eval_interval", type=int, default=1) #10
     parser.add_argument("--image_scale", type=int, default=224)
 
     # =================================

@@ -1,8 +1,10 @@
+import os
+import sys
 import torch
 import traceback
-import sys
 
 import numpy as np
+from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from tqdm.auto import tqdm
 
@@ -15,23 +17,24 @@ from clipasso import painterly_rendering
 
 torch.autograd.set_detect_anomaly(True)
 
-def main(model_params):
 
-    model = PhospheneOptimizer(model_params=model_params,
+def train_model(args):
+
+    model = PhospheneOptimizer(args=args,
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
                                electrode_grid=1024)
     model.train()
-    optimizer = torch.optim.Adam(model.parameters(), lr=model_params.lr)
-    loss_func = Loss(model_params)
-    train_dataset = ImageFolder(root=model_params.train_set)
-    val_dataset = ImageFolder(root=model_params.val_set)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    loss_func = Loss(args)
+    train_dataset = ImageFolder(root=args.train_set)
+    val_dataset = ImageFolder(root=args.val_set)
 
     epoch_loss = []
     val_loss = []
-    if model_params.display:
-        epoch_range = range(model_params.num_iter)
+    if args.display:
+        epoch_range = range(args.num_iter)
     else:
-        epoch_range = tqdm(range(model_params.num_iter))
+        epoch_range = tqdm(range(args.num_iter))
 
     for epoch in epoch_range:
         sample_losses = []
@@ -39,8 +42,8 @@ def main(model_params):
         for sample in train_dataset:
             input_img, _ = sample
             # Data preprocessing and augmentation performed by clipasso from PIL images
-            input_img, mask = clipasso.painterly_rendering.get_target(model_params, input_img)
-            input_img = input_img.to(model_params.device)
+            input_img, mask = clipasso.painterly_rendering.get_target(args, input_img)
+            input_img = input_img.to(args.device)
             optimizer.zero_grad()
             output_img = model(input_img)
             losses_dict = loss_func(output_img, input_img, model.parameters(), epoch, optimizer)
@@ -56,75 +59,98 @@ def main(model_params):
             "epoch_loss": avg_epoch_loss
         })
 
-        # Validation step every N epochs (defined in model_params.eval_interval)
-        if model_params.eval_interval > 0 and epoch % model_params.eval_interval == 0:
-            avg_val_loss = validate_model(model, val_dataset, loss_func, model_params)
+        # Validation step every N epochs (defined in args.eval_interval)
+        if args.eval_interval > 0 and epoch % args.eval_interval == 0:
+            avg_val_loss = validate_model(model, val_dataset, loss_func, epoch, optimizer, args)
             val_loss.append({
                 "epoch": epoch,
                 "val_loss": avg_val_loss
             })
 
-        # Save ongoing training data every N epochs (defined in model_params.save_interval)
-        if model_params.save_interval > 0 and epoch % model_params.eval_interval == 0:
-            checkpoint_file = f"checkpoint_epoch_{epoch}.pth"
-            save_data(model, optimizer, epoch, epoch_loss, val_loss, model_params, file_name=checkpoint_file)
+        # Save ongoing training data every N epochs (defined in args.save_interval)
+        if args.save_interval > 0 and epoch % args.eval_interval == 0:
+            # Make epoch directory if it does not exist already
+            epoch_path_dir = os.path.join(args.output_dir, f"epoch_{epoch}")
+            if not os.path.exists(epoch_path_dir):
+                os.mkdir(epoch_path_dir)
+            # Create file path of training data to save
+            filepath_data = os.path.join(epoch_path_dir, f"checkpoint_epoch_{epoch}.pth")
+            filepath_img = os.path.join(epoch_path_dir, f"optimized_img_epoch_{epoch}.png")
+            save_data(model,
+                      optimizer,
+                      epoch,
+                      epoch_loss,
+                      val_loss,
+                      args,
+                      output_img,
+                      file_name_data=filepath_data,
+                      file_name_img=filepath_img)
 
-    # Save the final model # TODO: save model outside of the training loop
-    final_model_file = "model.pth"
-    torch.save(model.state_dict(), final_model_file)
-
-    # Save the final training data
+    # Gather the final training data
     final_training_data = {
         'epoch_loss': epoch_loss,
         'val_loss': val_loss,
-        'final_epoch': model_params.num_iter,
-        'model_params': model_params
+        'final_epoch': args.num_iter,
+        'args': args
     }
-    torch.save(final_training_data, "final_training_data.pth") # TODO: save training data outside of the training loop
 
     return model.state_dict(), final_training_data
 
 
-# TODO: check if this is really using requires_grad = False for the saliency map inside the model
-# TODO: check that the loss_func is called correctly (because of arguments)
-def validate_model(model, validation_loader, loss_func, model_params):
-    model.eval()
+def validate_model(model, validation_loader, loss_func, epoch, optimizer, args):
+    # When setting torch.no_grad(), there is a bug in clipasso preventing us to interface with clip in the forward
+    # loop of the model. Therefore, the model stays in training mode but the calculated losses are not backpropagated.
     val_losses = []
-    with torch.no_grad():
-        for val_sample in validation_loader:
-            input_img, _ = val_sample
-            input_img = input_img.to(model_params.device)
-            output_img = model(input_img)
-            losses_dict = loss_func(output_img, input_img, model.parameters())
-            val_loss = sum(losses_dict.values())
-            val_losses.append(val_loss.item())
+    for val_sample in validation_loader:
+        input_img, _ = val_sample
+        input_img, mask = clipasso.painterly_rendering.get_target(args, input_img)
+        input_img = input_img.to(args.device)
+        optimizer.zero_grad()
+        output_img = model(input_img)
+        output_img = output_img.to(args.device)
+        losses_dict = loss_func(output_img, input_img, model.parameters(), epoch, mode="eval")
+        val_loss = sum(losses_dict.values())
+        val_losses.append(val_loss.item())
     avg_val_loss = sum(val_losses) / len(val_losses)
-    model.train()
     return avg_val_loss
 
 
-def save_data(model, optimizer, epoch, epoch_loss, val_loss, model_params, file_name="checkpoint.pth"):
+def save_data(model,
+              optimizer,
+              epoch,
+              epoch_loss,
+              val_loss,
+              args,
+              output_img,
+              file_name_data="checkpoint_training_data.pth",
+              file_name_img="output_img.png"):
+
+    # Save training data at a given checkpoint
     checkpoint = {
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'epoch_loss': epoch_loss,
         'val_loss': val_loss,
-        'model_params': model_params
+        'args': args
     }
-    # TODO: Save optimized image
-    torch.save(checkpoint, file_name)
+    torch.save(checkpoint, file_name_data)
+
+    # Save output image generated by the model at a given checkpoint
+    img = output_img.squeeze(0)
+    img = transforms.ToPILImage(img)
+    img.save(file_name_img)
 
 
 if __name__ == "__main__":
-    model_params = model_config.parse_arguments()
-    final_config = vars(model_params)
+    args = model_config.parse_arguments()
+    final_config = vars(args)
     try:
-        configs_to_save = main(model_params)
+        weights, training_data = train_model(args)
+        torch.save(weights, f"{args.output_dir}/model.pth")
+        torch.save(training_data, f"{args.output_dir}/final_training_data.pth")
     except BaseException as err:
         print(f"Unexpected error occurred:\n {err}")
         print(traceback.format_exc())
         sys.exit(1)
-    for k in configs_to_save.keys():
-        final_config[k] = configs_to_save[k]
-    np.save(f"{model_params.output_dir}/config.npy", final_config)
+    np.save(f"{args.output_dir}/model_config.npy", final_config)
