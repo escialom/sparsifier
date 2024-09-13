@@ -26,8 +26,8 @@ def parse_arguments():
     parser.add_argument("--path_svg", type=str, default="none",
                         help="if you want to load an svg file and train from it")
     parser.add_argument("--use_gpu", type=int, default=0)
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--mask_object", type=int, default=0)
+    parser.add_argument("--seed", type=int, default=29)
+    parser.add_argument("--mask_object", type=int, default=1)
     parser.add_argument("--fix_scale", type=int, default=0)
     parser.add_argument("--display_logs", type=int, default=0)
     parser.add_argument("--display", type=int, default=0)
@@ -45,18 +45,18 @@ def parse_arguments():
     # =================================
     parser.add_argument("--train_set", type=str, default="./data/train_set")
     parser.add_argument("--val_set", type=str, default="./data/val_set")
-    parser.add_argument("--num_iter", type=int, default=3,
+    parser.add_argument("--num_iter", type=int, default=40,
                         help="number of optimization iterations")
     parser.add_argument("--num_stages", type=int, default=1,
                         help="training stages, you can train x strokes, then freeze them and train another x strokes etc.")
     parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=0.0001) #0.00001
+    parser.add_argument("--lr", type=float, default=0.0001) #0.0001
     parser.add_argument("--color_lr", type=float, default=0.01)
     parser.add_argument("--color_vars_threshold", type=float, default=0.0)
     parser.add_argument("--batch_size", type=int, default=1,
                         help="for optimization it's only one image")
     parser.add_argument("--save_interval", type=int, default=10)
-    parser.add_argument("--eval_interval", type=int, default=1) #10
+    parser.add_argument("--eval_interval", type=int, default=10) #10
     parser.add_argument("--image_scale", type=int, default=224)
 
     # =================================

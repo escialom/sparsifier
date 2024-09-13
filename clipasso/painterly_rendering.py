@@ -34,14 +34,14 @@ def load_renderer(args, target_im=None, mask=None):
 
 
 def get_target(args, target):
-    #target = Image.open(target)
+    # target = Image.open(target)
     if target.mode == "RGBA":
         # Create a white rgba background
         new_image = Image.new("RGBA", target.size, "WHITE")
         # Paste the image on the background.
         new_image.paste(target, (0, 0), target)
         target = new_image
-    target = target.convert("RGB")
+    # target = target.convert("RGB")
     masked_im, mask = utils.get_mask_u2net(args, target)
     if args.mask_object:
         target = masked_im

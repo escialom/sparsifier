@@ -42,9 +42,12 @@ class SaliencyMap(torch.nn.Module):
 
 
 class MiniConvNet(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args, seed=None):
         super(MiniConvNet, self).__init__()
         self.size = args.image_scale
+
+        if seed is not None:
+            torch.manual_seed(seed)
 
         self.localization = nn.Sequential(
             nn.Conv2d(1, 32, 3, stride=1, padding=0),
@@ -75,21 +78,16 @@ class PhospheneOptimizer(nn.Module):
         self.args = args
         self.simulator_params = simulator_params
         self.electrode_grid = electrode_grid
-        self.use_seed = True
-        self.phosphene_coords = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(self.simulator_params, self.electrode_grid, self.use_seed)
+        self.phosphene_coords = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(self.simulator_params, self.electrode_grid, use_seed=True)
         self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords)
-        self.get_learnable_params = MiniConvNet(self.args)
-        self.init_weights = torch.load("./init_weights.pth")
-        self.get_learnable_params.load_state_dict(self.init_weights, strict=False)
+        self.get_learnable_params = MiniConvNet(self.args, seed=args.seed)
+        # self.init_weights = torch.load("./init_weights.pth")
+        # self.get_learnable_params.load_state_dict(self.init_weights, strict=False)
         self.extract_saliency_map = SaliencyMap(self.args)
 
     def forward(self, input_image):
         # The saliency map requires gradients only if the model is in training mode
         clip_attention_map, saliency_map = self.extract_saliency_map(input_image, requires_grad=True)
-        # if self.training:
-        #     clip_attention_map, saliency_map = self.extract_saliency_map(input_image, requires_grad=True)
-        # else:
-        #     clip_attention_map, saliency_map = self.extract_saliency_map(input_image, requires_grad=False)
         phosphene_placement_map = self.get_learnable_params(saliency_map.unsqueeze(0).unsqueeze(0))
         # Rescale pixel intensities between [0, <max_stimulation_intensity_ampere>]
         phosphene_placement_map = self.normalized_rescaling(phosphene_placement_map, max_stimulation_intensity=self.simulator_params['sampling']['stimulus_scale'])

@@ -64,11 +64,17 @@ def get_visual_field_coordinates_probabilistically(
     :param rng: Numpy random number generator.
     :return: Polar coordinates of n_phosphenes phosphenes.
     """
-    if rng is None:
-        rng = np.random.default_rng()
+    # if rng is None:
+    #     rng = np.random.default_rng()
+    #
+    # if use_seed:
+    #     np.random.seed(params['run']['seed'])
 
-    if use_seed:
-        np.random.seed(params['run']['seed'])
+    if rng is None:
+        if use_seed:
+            rng = np.random.default_rng(params['run']['seed'])
+        else:
+            rng = np.random.default_rng()
 
     max_r = params['run']['view_angle'] / 2
     min_r = params['run']['min_angle']

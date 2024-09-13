@@ -14,6 +14,7 @@ from torchvision import transforms
 from torchvision.utils import make_grid
 from skimage.transform import resize
 from clipasso.U2Net_.model import U2NET
+import torch.nn.functional as F
 
 
 def imwrite(img, filename, gamma=2.2, normalize=False, use_wandb=False, wandb_name="", step=0, input_im=None):
@@ -278,7 +279,7 @@ def get_mask_u2net(args, pil_im):
     mask = resize(mask, (h, w), anti_aliasing=False)
     mask[mask < 0.5] = 0
     mask[mask >= 0.5] = 1
-    
+
     # predict_np = predict.clone().cpu().data.numpy()
     im = Image.fromarray((mask[:, :, 0]*255).astype(np.uint8)).convert('RGB')
     im.save(f"{args.output_dir}/mask.png")
