@@ -45,18 +45,18 @@ def parse_arguments():
     # =================================
     parser.add_argument("--train_set", type=str, default="./data/train_set")
     parser.add_argument("--val_set", type=str, default="./data/val_set")
-    parser.add_argument("--num_iter", type=int, default=40,
+    parser.add_argument("--num_iter", type=int, default=201,
                         help="number of optimization iterations")
     parser.add_argument("--num_stages", type=int, default=1,
                         help="training stages, you can train x strokes, then freeze them and train another x strokes etc.")
     parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=0.0001) #0.0001
+    parser.add_argument("--lr", type=float, default=1e-6)
     parser.add_argument("--color_lr", type=float, default=0.01)
     parser.add_argument("--color_vars_threshold", type=float, default=0.0)
-    parser.add_argument("--batch_size", type=int, default=1,
+    parser.add_argument("--batch_size", type=int, default=2,
                         help="for optimization it's only one image")
-    parser.add_argument("--save_interval", type=int, default=10)
-    parser.add_argument("--eval_interval", type=int, default=10) #10
+    parser.add_argument("--save_interval", type=int, default=2)
+    parser.add_argument("--eval_interval", type=int, default=2) #10
     parser.add_argument("--image_scale", type=int, default=224)
 
     # =================================
@@ -74,6 +74,7 @@ def parse_arguments():
     parser.add_argument("--saliency_model", type=str, default="clip")
     parser.add_argument("--saliency_clip_model", type=str, default="ViT-B/32")
     parser.add_argument("--xdog_intersec", type=int, default=1)
+    parser.add_argument("--init_mode", type=str, default="contours")
     parser.add_argument("--mask_object_attention", type=int, default=0)
     parser.add_argument("--softmax_temp", type=float, default=0.3)
 

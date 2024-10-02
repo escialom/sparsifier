@@ -35,13 +35,16 @@ def train_model(args):
     train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True) #args.batch_size
     val_dataset = ImageFolder(root=args.val_set)
 
-    epoch_loss = []
-    val_loss = []
+    # Prepare training loop
+    epoch_loss = {}
+    training_data = {}
+    validation_data = {}
     if args.display:
         epoch_range = range(args.num_iter)
     else:
         epoch_range = tqdm(range(args.num_iter))
 
+    # Training loop
     for epoch in epoch_range:
         batch_losses = []
         for batch in train_loader:
@@ -63,50 +66,46 @@ def train_model(args):
             optimizer.step()
             batch_losses.append(batch_loss.item())
         # Save loss of each epoch
-        epoch_loss.append({
-            "epoch": epoch,
-            "epoch_loss": sum(batch_losses) / len(batch_losses)
-        })
+        epoch_loss[epoch] = {'loss': sum(batch_losses) / len(batch_losses)}
 
         # Display epoch loss during training
         print(f"Epoch {epoch+1}/{args.num_iter}, Epoch Loss: {sum(batch_losses) / len(batch_losses):.4f}")
 
-        # Validation step every N epochs (defined in args.eval_interval)
-        if args.eval_interval > 0 and epoch % args.eval_interval == 0:
-            avg_val_loss = validate_model(model, val_dataset, loss_func, epoch, optimizer, args)
-            val_loss.append({
-                "epoch": epoch,
-                "val_loss": avg_val_loss
-            })
-
         # Save ongoing training data every N epochs (defined in args.save_interval)
-        if args.save_interval > 0 and epoch % args.save_interval == 0:
-            # Make epoch directory if it does not exist already
-            epoch_path_dir = os.path.join(args.output_dir, f"epoch_{epoch}")
-            if not os.path.exists(epoch_path_dir):
-                os.mkdir(epoch_path_dir)
-            # Create file path of training data to save
-            filepath_data = os.path.join(epoch_path_dir, f"checkpoint_epoch_{epoch}.pth")
-            filepath_img = os.path.join(epoch_path_dir, f"optimized_img_epoch_{epoch}.png")
-            save_data(model,
-                      optimizer,
-                      epoch,
-                      epoch_loss,
-                      val_loss,
-                      args,
-                      output_img,
-                      file_name_data=filepath_data,
-                      file_name_img=filepath_img)
+        if epoch > 0 and epoch % args.save_interval == 0:
+            # Gather current training data to the aggregated dictionary
+            training_data[epoch] = {
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'epoch_loss': epoch_loss[epoch].get('loss')
+            }
+            # TODO: Change this part
+            save_img(output_img, os.path.join(args.output_dir, "optimized_img.png"))
 
-    # Gather the final training data
-    final_training_data = {
+        # Validation step every N epochs (defined in args.eval_interval)
+        if epoch > 0 and epoch % args.eval_interval == 0:
+            avg_val_loss = validate_model(model, val_dataset, loss_func, epoch, optimizer, args)
+            # Gather current training data to the aggregated dictionary
+            validation_data[epoch] = {
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': avg_val_loss
+            }
+
+    # Save the data gathered during training
+    filepath_data = os.path.join(args.output_dir, "training_data_checkpoints.pth")
+    torch.save(training_data, filepath_data)
+    # Get training data of the last epoch
+    training_data_last_epoch = {
         'epoch_loss': epoch_loss,
-        'val_loss': val_loss,
-        'final_epoch': args.num_iter,
+        'val_loss': validation_data.get('val_loss'),
+        'final_epoch': args.num_iter-1,
         'args': args
     }
+    # Get the optimized image
+    save_img(output_img, os.path.join(args.output_dir, "optimized_img.png"))
 
-    return model.state_dict(), final_training_data
+    return model.state_dict(), training_data_last_epoch
 
 
 def validate_model(model, validation_loader, loss_func, epoch, optimizer, args):
@@ -127,28 +126,8 @@ def validate_model(model, validation_loader, loss_func, epoch, optimizer, args):
     return avg_val_loss
 
 
-def save_data(model,
-              optimizer,
-              epoch,
-              epoch_loss,
-              val_loss,
-              args,
-              output_img,
-              file_name_data="checkpoint_training_data.pth",
-              file_name_img="output_img.png"):
 
-    # Save training data at a given checkpoint
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'epoch_loss': epoch_loss,
-        'val_loss': val_loss,
-        'args': args
-    }
-    torch.save(checkpoint, file_name_data)
-
-    # Save output image generated by the model at a given checkpoint
+def save_img(output_img, file_name_img="output_img.png"):
     img = output_img.squeeze(0)
     img = transforms.ToPILImage()(img)
     img.save(file_name_img)
