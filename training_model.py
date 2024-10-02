@@ -4,6 +4,7 @@ import torch
 import traceback
 
 import numpy as np
+import matplotlib.pyplot as plt
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
@@ -12,7 +13,7 @@ from tqdm.auto import tqdm
 from config import model_config
 import clipasso
 import dynaphos
-from model import PhospheneOptimizer
+from model2 import PhospheneOptimizer
 from clipasso.models.loss import Loss
 from clipasso import painterly_rendering
 
@@ -30,9 +31,10 @@ def train_model(args):
 
     # Prepare dataloaders
     transform = transforms.Compose([transforms.Resize((args.image_scale, args.image_scale)),
+                                    transforms.CenterCrop(args.image_scale),
                                     transforms.ToTensor()])
     train_dataset = ImageFolder(root=args.train_set, transform=transform)
-    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True) #args.batch_size
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True) #args.batch_size
     val_dataset = ImageFolder(root=args.val_set)
 
     # Prepare training loop
@@ -46,30 +48,20 @@ def train_model(args):
 
     # Training loop
     for epoch in epoch_range:
-        batch_losses = []
         for batch in train_loader:
-            sample_losses = []
-            # we loop over samples in the batch as clipasso expect only one sample as input
-            images = batch[0]
-            for sample in images:
-                # Data preprocessing and augmentation performed by clipasso from PIL images
-                input_img = transforms.ToPILImage()(sample.squeeze())
-                input_img, mask = clipasso.painterly_rendering.get_target(args, input_img)
-                input_img = input_img.to(args.device)
-                optimizer.zero_grad()
-                output_img = model(input_img)
-                sample_losses_dict = loss_func(output_img, input_img, model.parameters(), epoch, optimizer)
-                sample_losses.append(sum(sample_losses_dict.values()))
-            # Average loss over samples in the batch
-            batch_loss = sum(sample_losses) / len(sample_losses)
-            batch_loss.backward()
+            inuput_imgs,_ = batch
+            inuput_imgs = inuput_imgs.to(args.device)
+            optimizer.zero_grad()
+            output_imgs = model(inuput_imgs)
+            losses_dict = loss_func(output_imgs, inuput_imgs, model.parameters(), epoch, optimizer)
+            loss = sum(losses_dict.values())
+            loss.backward()
             optimizer.step()
-            batch_losses.append(batch_loss.item())
         # Save loss of each epoch
-        epoch_loss[epoch] = {'loss': sum(batch_losses) / len(batch_losses)}
+        epoch_loss[epoch] = {'loss': loss}
 
         # Display epoch loss during training
-        print(f"Epoch {epoch+1}/{args.num_iter}, Epoch Loss: {sum(batch_losses) / len(batch_losses):.4f}")
+        print(f'Epoch [{epoch}/{len(epoch_range)}], Loss: {loss.item():.6f}')
 
         # Save ongoing training data every N epochs (defined in args.save_interval)
         if epoch > 0 and epoch % args.save_interval == 0:
@@ -80,17 +72,17 @@ def train_model(args):
                 'epoch_loss': epoch_loss[epoch].get('loss')
             }
             # TODO: Change this part
-            save_img(output_img, os.path.join(args.output_dir, "optimized_img.png"))
+            #save_img(output_imgs, os.path.join(args.output_dir, "optimized_img.png"))
 
         # Validation step every N epochs (defined in args.eval_interval)
-        if epoch > 0 and epoch % args.eval_interval == 0:
-            avg_val_loss = validate_model(model, val_dataset, loss_func, epoch, optimizer, args)
-            # Gather current training data to the aggregated dictionary
-            validation_data[epoch] = {
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'val_loss': avg_val_loss
-            }
+        # if epoch > 0 and epoch % args.eval_interval == 0:
+        #     avg_val_loss = validate_model(model, val_dataset, loss_func, epoch, optimizer, args)
+        #     # Gather current training data to the aggregated dictionary
+        #     validation_data[epoch] = {
+        #         'model_state_dict': model.state_dict(),
+        #         'optimizer_state_dict': optimizer.state_dict(),
+        #         'val_loss': avg_val_loss
+        #     }
 
     # Save the data gathered during training
     filepath_data = os.path.join(args.output_dir, "training_data_checkpoints.pth")
@@ -103,7 +95,9 @@ def train_model(args):
         'args': args
     }
     # Get the optimized image
-    save_img(output_img, os.path.join(args.output_dir, "optimized_img.png"))
+    # save_img(output_imgs, os.path.join(args.output_dir, "optimized_img.png"))
+    save_images(output_imgs, save_prefix='output_image')
+
 
     return model.state_dict(), training_data_last_epoch
 
@@ -127,10 +121,17 @@ def validate_model(model, validation_loader, loss_func, epoch, optimizer, args):
 
 
 
-def save_img(output_img, file_name_img="output_img.png"):
-    img = output_img.squeeze(0)
-    img = transforms.ToPILImage()(img)
-    img.save(file_name_img)
+# def save_img(output_img, file_name_img="output_img.png"):
+#     img = output_img.squeeze(0)
+#     img = transforms.ToPILImage()(img)
+#     img.save(file_name_img)
+
+def save_images(output_imgs, save_prefix='image'):
+    for i in range(output_imgs.shape[0]):
+        img = output_imgs[i]
+        img_np = img.detach().permute(1, 2, 0).cpu().numpy()
+        img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min())
+        plt.imsave(f'{save_prefix}_{i}.png', img_np)
 
 
 if __name__ == "__main__":
