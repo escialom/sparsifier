@@ -167,7 +167,7 @@ class Sigma(State):
 
 
 class GaussianSimulator:
-    def __init__(self, params: dict, coordinates: Map,
+    def __init__(self, params: dict, coordinates: Map, batch_size: int,
                  rng: Optional[np.random.Generator] = None, 
                  theta: Optional[np.ndarray] = None):
         """initialize a simulator with provided parameters settings,
@@ -175,6 +175,7 @@ class GaussianSimulator:
 
         :param params: dict of dicts with all setting parameters.
         :param coordinates: Eccentricities and angles of phosphenes.
+        :param batch_size: batch size for simulation
         :param theta: Orientations for gabor filtering (if 'gabor_filtering' set to True)
         :param rng: Numpy random number generator.
         """
@@ -190,9 +191,9 @@ class GaussianSimulator:
         self.phosphene_maps = \
             self.generate_phosphene_maps(coordinates, theta=theta)
 
-        batch_size = self.params['run']['batch_size']
-        if batch_size != 0:
-            self.shape = (batch_size, self.num_phosphenes, 1, 1)
+        self.batch_size = batch_size
+        if self.batch_size != 0:
+            self.shape = (self.batch_size, self.num_phosphenes, 1, 1)
             self._electrode_dimension = 1
         else:
             self.shape = (self.num_phosphenes, 1, 1)
@@ -410,10 +411,8 @@ class GaussianSimulator:
         # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
         supra_threshold = torch.greater(self.activation.get(), self.threshold.get())
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
-        num_phosphenes = torch.sum(intensity[1] > 0).item()
-        print(f"Number of phosphenes: {num_phosphenes}")
         # Return phosphene image.
-        return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1)
+        return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1), intensity
 
     @property
     def phosphene_centers(self):

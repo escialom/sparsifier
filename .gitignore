@@ -1,9 +1,5 @@
 __pycache__/
 output/
-/model2.py
-/test.py
-/output_image_0.png
-/output_image_1.png
 .ipynb_checkpoints
 __pycache__
 clips/
