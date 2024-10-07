@@ -13,58 +13,33 @@ from torchvision import transforms
 
 
 class Painter(torch.nn.Module):
-    # def __init__(self, args,
-    #             num_strokes=4,
-    #             num_segments=4,
-    #             imsize=224,
-    #             device=None,
-    #             target_im=None,
-    #             mask=None):
-    #     super(Painter, self).__init__()
 
     def __init__(self, args,
-                device=None,
-                mask=None):
+                 device=None,
+                 mask=None):
         super(Painter, self).__init__()
 
         self.args = args
-        # self.num_paths = num_strokes
-        # self.num_segments = num_segments UNTIL HERE
-        # self.width = args.width
-        # self.control_points_per_seg = args.control_points_per_seg
-        # self.opacity_optim = args.force_sparse
-        # self.num_stages = args.num_stages
-        # self.add_random_noise = "noise" in args.augemntations
+        self.add_random_noise = "noise" in args.augemntations
         self.noise_thresh = args.noise_thresh
         self.softmax_temp = args.softmax_temp
 
         self.shapes = []
         self.shape_groups = []
         self.device = device
-        # self.canvas_width, self.canvas_height = imsize, imsize KEEP COMMENTED
         self.points_vars = []
         self.color_vars = []
-        # self.color_vars_threshold = args.color_vars_threshold
-
-        self.path_svg = args.path_svg
-        # self.strokes_per_stage = self.num_paths KEEP COMMENTED
         self.optimize_flag = []
 
         # attention related for strokes initialisation
         self.attention_init = args.attention_init
-        # self.target_path = args.target
         self.saliency_model = args.saliency_model
         self.xdog_intersec = args.xdog_intersec
         self.mask_object = args.mask_object_attention
 
         self.text_target = args.text_target # for clip gradients
         self.saliency_clip_model = args.saliency_clip_model
-        # self.define_attention_input(target_im) KEEP COMMENTED
         self.mask = mask
-        # self.attention_map = self.set_attention_map() if self.attention_init else None KEEP COMMENTED
-
-        # self.thresh = self.set_attention_threshold_map() if self.attention_init else None KEEP COMMENTED
-        # self.strokes_counter = 0 # counts the number of calls to "get_path" KEEP COMMENTED
         self.epoch = 0
         self.final_epoch = args.num_iter - 1
 

@@ -4,8 +4,6 @@ import random
 
 import numpy as np
 import torch
-import wandb
-
 
 def set_seed(seed):
     random.seed(seed)
@@ -23,22 +21,10 @@ def parse_arguments():
     # =================================
     parser.add_argument("--target", help="target image path")
     parser.add_argument("--output_dir", type=str, default="output")
-    parser.add_argument("--path_svg", type=str, default="none",
-                        help="if you want to load an svg file and train from it")
     parser.add_argument("--use_gpu", type=int, default=0)
     parser.add_argument("--seed", type=int, default=29)
     parser.add_argument("--mask_object", type=int, default=1)
     parser.add_argument("--fix_scale", type=int, default=0)
-    parser.add_argument("--display_logs", type=int, default=0)
-    parser.add_argument("--display", type=int, default=0)
-
-    # =================================
-    # ============ wandb ============
-    # =================================
-    parser.add_argument("--use_wandb", type=int, default=0)
-    parser.add_argument("--wandb_user", type=str, default="yael-vinker")
-    parser.add_argument("--wandb_name", type=str, default="test")
-    parser.add_argument("--wandb_project_name", type=str, default="none")
 
     # =================================
     # =========== training ============
@@ -47,28 +33,17 @@ def parse_arguments():
     parser.add_argument("--val_set", type=str, default="./data/val_set")
     parser.add_argument("--num_iter", type=int, default=3,
                         help="number of optimization iterations")
-    parser.add_argument("--num_stages", type=int, default=1,
-                        help="training stages, you can train x strokes, then freeze them and train another x strokes etc.")
     parser.add_argument("--lr_scheduler", type=int, default=0)
     parser.add_argument("--lr", type=float, default=1e-5)
-    parser.add_argument("--color_lr", type=float, default=0.01)
-    parser.add_argument("--color_vars_threshold", type=float, default=0.0)
     parser.add_argument("--batch_size_training", type=int, default=2)
     parser.add_argument("--batch_size_validation", type=int, default=2)
     parser.add_argument("--save_interval", type=int, default=1)
-    parser.add_argument("--eval_interval", type=int, default=1) #10
+    parser.add_argument("--eval_interval", type=int, default=1)
     parser.add_argument("--image_scale", type=int, default=224)
 
     # =================================
-    # ======== strokes params =========
+    # ======== map init params ========
     # =================================
-    parser.add_argument("--num_paths", type=int,
-                        default=16, help="number of strokes")
-    parser.add_argument("--width", type=float,
-                        default=1.5, help="stroke width")
-    parser.add_argument("--control_points_per_seg", type=int, default=4)
-    parser.add_argument("--num_segments", type=int, default=1,
-                        help="number of segments for each stroke, each stroke is a bezier curve with 4 control points")
     parser.add_argument("--attention_init", type=int, default=1,
                         help="if True, use the attention heads of Dino model to set the location of the initial strokes")
     parser.add_argument("--saliency_model", type=str, default="clip")
@@ -115,17 +90,6 @@ def parse_arguments():
 
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
-
-    jpg_logs_dir = f"{args.output_dir}/jpg_logs"
-    svg_logs_dir = f"{args.output_dir}/svg_logs"
-    if not os.path.exists(jpg_logs_dir):
-        os.mkdir(jpg_logs_dir)
-    if not os.path.exists(svg_logs_dir):
-        os.mkdir(svg_logs_dir)
-
-    if args.use_wandb:
-        wandb.init(project=args.wandb_project_name, entity=args.wandb_user,
-                   config=args, name=args.wandb_name, id=wandb.util.generate_id())
 
     if args.use_gpu:
         args.device = torch.device("cuda" if (
