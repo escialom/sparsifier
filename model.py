@@ -13,30 +13,33 @@ class InitMap(torch.nn.Module):
         self.device = self.args.device
         self.clipasso_model = clipasso_model.Painter(self.args, device=self.device)
         self.contour_extractor = clipasso_model.XDoG_()
+        self.image_scale = (self.args.image_scale, self.args.image_scale)
+        self.init_map_soft_batch = torch.empty((1, 1, *self.image_scale), device=self.device)
 
     def forward(self, img_batch, requires_grad):
-        init_maps = []
-        # Extract contours for each image of the batch
-        for i in range(img_batch.shape[0]):
-            image = img_batch[i].permute(1, 2, 0).cpu().numpy()
-            image_contours = self.contour_extractor(image, k=10)
-            image_contours = (1-image_contours)
-            # Softmax the contour image
-            init_map_soft = np.copy(image_contours)
-            init_map_soft[image_contours > 0] = self.softmax(image_contours[image_contours > 0], tau=self.args.softmax_temp)
-            init_map_soft = torch.Tensor(init_map_soft) / init_map_soft.max()
-            init_maps.append(init_map_soft)
-        # Put images back in batch format [BxCxHxW]
-        init_map_soft_batch = torch.stack(init_maps)
-        init_map_soft_batch = init_map_soft_batch.unsqueeze(0)
-        if img_batch.shape[0] > 1:
-            init_map_soft_batch = init_map_soft_batch.permute(1, 0, 2, 3)
-        init_map_soft_batch.requires_grad = requires_grad
+        batch_size = img_batch.shape[0]
+        if self.init_map_soft_batch.shape[0] != batch_size:
+            self.init_map_soft_batch = torch.empty((batch_size, 1, *self.image_scale), device=self.device)
 
-        return init_map_soft_batch
+        # Extract contours for each image of the batch
+        with torch.no_grad():
+            for i in range(img_batch.shape[0]):
+                image = img_batch[i].permute(1, 2, 0).cpu().numpy()
+                image_contours = self.contour_extractor(image, k=10)
+                image_contours = (1-image_contours)
+                # Softmax the contour image
+                init_map_soft = torch.tensor(image_contours, device=self.device)
+                init_map_soft[image_contours > 0] = self.softmax(image_contours[image_contours > 0], tau=self.args.softmax_temp)
+                init_map_soft /= init_map_soft.max()
+                self.init_map_soft_batch[i] = init_map_soft.detach()
+        self.init_map_soft_batch.requires_grad = requires_grad
+
+        return self.init_map_soft_batch
 
     def softmax(self, x, tau=0.2):
-        e_x = np.exp(x / tau)
+        if isinstance(x, np.ndarray):
+            x = torch.tensor(x, device=self.device)
+        e_x = torch.exp(x / tau)
         return e_x / e_x.sum()
 
 
@@ -47,20 +50,24 @@ class MiniConvNet(nn.Module):
 
         if seed is not None:
             torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+            torch.cuda.manual_seed_all(seed)
+            torch.use_deterministic_algorithms(True)
 
         self.localization = nn.Sequential(
             nn.Conv2d(1, 32, 3, stride=1, padding=0),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(32, 64, 3, stride=2, padding=0),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(64, 1, 3, stride=1, padding=0),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
         self.conv_padding = nn.Sequential(
             nn.Upsample((args.image_scale, args.image_scale), mode='nearest'))
 
     def forward(self, x):
         xs = self.localization(x)
+        torch.use_deterministic_algorithms(False)
         theta = self.conv_padding(xs)
         theta = torch.clamp(theta, min=theta.mean(), max=theta.max())
         theta = torch.sigmoid(theta)
@@ -70,20 +77,24 @@ class MiniConvNet(nn.Module):
 class PhospheneOptimizer(nn.Module):
     def __init__(self, args,
                  simulator_params,
-                 electrode_grid):
+                 electrode_grid,
+                 batch_size):
         super(PhospheneOptimizer, self).__init__()
 
         self.args = args
         self.simulator_params = simulator_params
         self.electrode_grid = electrode_grid
+        self.batch_size = batch_size
         self.phosphene_coords = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(self.simulator_params, self.electrode_grid, use_seed=True)
-        self.get_learnable_params = MiniConvNet(self.args,seed=args.seed)
+        self.get_learnable_params = MiniConvNet(self.args,seed=args.seed).to(args.device)
         self.get_contours = InitMap(self.args)
+        self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords, batch_size=self.batch_size)
 
     def forward(self, img_batch):
-        self.simulator = PhospheneSimulator(self.simulator_params,
-                                                self.phosphene_coords,
-                                                batch_size=img_batch.size(0))
+        # The first dimension of img_batch can change during the validation step.
+        # If so, reinit model with correct batch size
+        if self.simulator.batch_size != img_batch.shape[0]:
+            self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords, batch_size=img_batch.shape[0])
         contours = self.get_contours(img_batch, requires_grad=True)
         phosphene_placement_map = self.get_learnable_params(contours)
         # Rescale pixel intensities between [0, <max_stimulation_intensity_ampere>]
@@ -96,6 +107,11 @@ class PhospheneOptimizer(nn.Module):
         optimized_im = optimized_im.unsqueeze(0)
         optimized_im = optimized_im.permute(1, 0, 2, 3)
         optimized_im = optimized_im.repeat(1, 3, 1, 1)
+        # detach and delete variables to save memory
+        contours = contours.detach()
+        del contours
+        phosphene_placement_map = phosphene_placement_map.detach()
+        del phosphene_placement_map
         return optimized_im, stim_intensity
 
     def normalized_rescaling(self, phosphene_placement_map, max_stimulation_intensity=1):

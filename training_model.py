@@ -16,26 +16,22 @@ import dynaphos
 from model import PhospheneOptimizer
 from clipasso.models.loss import Loss
 
-torch.autograd.set_detect_anomaly(True)
-
 
 def train_model(args):
+
+    # Prepare dataloaders
+    train_dataset = ImageFolder(root=args.train_set, transform=transforms.ToTensor())
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size_training, shuffle=True)
+    val_dataset = ImageFolder(root=args.val_set, transform=transforms.ToTensor())
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size_validation, shuffle=False)
 
     # Init model, optimizer and loss
     model = PhospheneOptimizer(args=args,
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
-                               electrode_grid=1024)
+                               electrode_grid=1024,
+                               batch_size=args.batch_size_training)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     loss_func = Loss(args)
-
-    # Prepare dataloaders
-    transform = transforms.Compose([transforms.Resize((args.image_scale, args.image_scale)),
-                                    transforms.CenterCrop(args.image_scale),
-                                    transforms.ToTensor()])
-    train_dataset = ImageFolder(root=args.train_set, transform=transform)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size_training, shuffle=True)
-    val_dataset = ImageFolder(root=args.val_set, transform=transform)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size_validation, shuffle=False)
 
     # Keep track of a random validation image
     random.seed(args.seed)
@@ -52,6 +48,9 @@ def train_model(args):
                                             tracked_output_img,
                                             intensity,
                                             data_tracked_val_img,
+                                            val_dataset,
+                                            tracked_img_idx,
+                                            input_folder=args.val_set,
                                             epoch=0)
 
     # Prepare training loop
@@ -59,6 +58,8 @@ def train_model(args):
     training_data = {}
     val_loss_dict = {}
     validation_data = {}
+    prev_val_loss = None
+    min_val_loss_diff = 1e-5
     epoch_range = tqdm(range(args.num_iter))
 
     # Training loop
@@ -66,26 +67,30 @@ def train_model(args):
     for epoch in epoch_range:
         epoch_loss = 0.0
         num_batches = len(train_loader)
+        batch_idx = 0
         for batch in train_loader:
-            input_imgs,_ = batch
+            if batch_idx % 300 == 0:
+                print(f"Epoch {epoch}, batch {batch_idx} started")
+            input_imgs, _ = batch
             input_imgs = input_imgs.to(args.device)
             optimizer.zero_grad()
-            output_imgs,_ = model(input_imgs)
+            output_imgs, _ = model(input_imgs)
             losses_dict = loss_func(output_imgs, input_imgs, model.parameters(), epoch, optimizer, mode = "train")
             loss = sum(losses_dict.values())
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-            # Gather batch losses to calculate epoch loss
-            epoch_loss += loss
+            epoch_loss += loss.item()
+            batch_idx += 1
         # Save loss of each epoch
         epoch_loss = epoch_loss / num_batches
         epoch_loss_dict[epoch] = {'loss': epoch_loss}
 
         # Display epoch loss during training
-        print(f'Epoch [{epoch+1}/{len(epoch_range)}], Loss: {epoch_loss.item():.4f}')
+        print(f'Epoch [{epoch}/{len(epoch_range)}], Loss: {epoch_loss:.4f}')
 
         # Save ongoing training data every N epochs (defined in args.save_interval)
-        if epoch > 0 and epoch % args.save_interval == 0:
+        if epoch % args.save_interval == 0:
             # Gather current training data to the aggregated dictionary
             training_data[epoch] = {
                 'model_state_dict': model.state_dict(),
@@ -94,7 +99,7 @@ def train_model(args):
             }
 
         # Validation step every N epochs (defined in args.eval_interval)
-        if epoch > 0 and epoch % args.eval_interval == 0:
+        if epoch % args.eval_interval == 0:
             val_loss = validate_model(model, val_loader, loss_func, epoch, optimizer, args.device)
             val_loss_dict[epoch] = {'loss': val_loss}
             # Store the current validation state, model, and optimizer info
@@ -103,7 +108,7 @@ def train_model(args):
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': val_loss_dict[epoch].get('loss')
             }
-            # Track and save the optimized (tracked) validation image
+            # Save the optimized (tracked) validation image and register its metadata
             with torch.no_grad():
                 tracked_output_img, intensity = model(tracked_img)
             data_tracked_val_img = save_tracked_img(args.output_dir,
@@ -111,33 +116,45 @@ def train_model(args):
                                                     tracked_output_img,
                                                     intensity,
                                                     data_tracked_val_img,
-                                                    epoch)
+                                                    val_dataset,
+                                                    tracked_img_idx,
+                                                    input_folder=args.val_set,
+                                                    epoch=epoch)
+            # Stop the training loop if the difference is less than the threshold
+            if prev_val_loss is not None:
+                val_loss_diff = abs(val_loss - prev_val_loss)
+                if val_loss_diff < min_val_loss_diff:
+                    print(f"Stopping training early at epoch {epoch} due to minimal validation loss improvement.")
+                    break
+            prev_val_loss = val_loss
             model.train()
 
-    # Save data gathered during training
-    torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))
-    torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
-    torch.save(data_tracked_val_img, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
-
-    # Save optimized images once model is trained
+    # Get optimized validation images after training
     val_img_after_training = {}
     model.eval()
-    img_idx = 0
-    for batch, _ in val_loader:
-        for img_sample in batch:
-            img_sample = img_sample.unsqueeze(0).to(args.device)  # Add batch dimension
+    for batch_idx, (batch, _) in enumerate(val_loader):
+        for img_idx, img_sample in enumerate(batch):
+            img_sample = img_sample.unsqueeze(0).to(args.device)
             with torch.no_grad():
                 output_img, intensity = model(img_sample)
-            epoch_path_dir = create_dir(args.output_dir, epoch)
-            filepath_img = os.path.join(epoch_path_dir, f"val_img_{img_idx}.png")
-            save_images(output_img, filepath_img)
+            relative_img_path, _ = val_loader.dataset.samples[batch_idx * len(batch) + img_idx]
+            input_filename = os.path.splitext(os.path.basename(relative_img_path))[0]
+            val_img_post_training_dir = os.path.join(args.output_dir, "val_img_post_training")
+            output_img_dir = os.path.join(val_img_post_training_dir, os.path.dirname(relative_img_path))
+            os.makedirs(output_img_dir, exist_ok=True)
+            save_images(output_img, output_img_dir, input_filename, epoch)
             val_img_after_training[img_idx] = {
                 'input_img': img_idx,
                 'output_img': output_img,
                 'intensity': torch.sum(intensity).item(),
                 'number_phosphenes': torch.sum(intensity > 0).item()
             }
-            img_idx += 1
+
+    # Save data gathered during training
+    torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))
+    torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
+    torch.save(data_tracked_val_img, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
+    torch.save(val_img_after_training, os.path.join(args.output_dir, "data_val_imgs_after_training.pth"))
 
     return model.state_dict()
 
@@ -153,7 +170,7 @@ def validate_model(model, validation_loader, loss_func, epoch, optimizer, device
             output_imgs, _ = model(input_imgs)
             losses_dict = loss_func(output_imgs, input_imgs, model.parameters(), epoch, optimizer, mode="eval")
             loss = sum(losses_dict.values())
-            val_losses += loss
+            val_losses += loss.item()
     # Get the average validation loss of current epoch
     val_loss_epoch = val_losses / num_batches
     return val_loss_epoch
@@ -166,18 +183,23 @@ def create_dir(output_dir, epoch):
     return epoch_path_dir
 
 
-def save_images(output_imgs, save_prefix='image'):
+def save_images(output_imgs, save_prefix, input_filename, epoch_idx):
     for i in range(output_imgs.shape[0]):
         img = output_imgs[i]
         img_np = img.detach().permute(1, 2, 0).cpu().numpy()
         img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min())
-        plt.imsave(f'{save_prefix}_{i}.png', img_np)
+        filename_output = f"{input_filename}_phos_{epoch_idx}_{i}.png"
+        plt.imsave(os.path.join(save_prefix, filename_output), img_np)
 
 
-def save_tracked_img(output_dir, tracked_img_input, tracked_img_output, stimulation_intensity, dict_metadata, epoch):
+def save_tracked_img(output_dir, tracked_img_input, tracked_img_output, stimulation_intensity, dict_metadata, val_dataset, tracked_img_idx, input_folder, epoch):
     epoch_path_dir = create_dir(output_dir, epoch)
-    filepath_img = os.path.join(epoch_path_dir, f"tracked_val_img_epoch_{epoch}.png")
-    save_images(tracked_img_output, filepath_img)
+    img_path, _ = val_dataset.samples[tracked_img_idx]
+    relative_path = os.path.relpath(img_path, input_folder)
+    input_filename = os.path.splitext(os.path.basename(relative_path))[0]
+    output_img_dir = os.path.join(epoch_path_dir, os.path.dirname(relative_path))
+    os.makedirs(output_img_dir, exist_ok=True)
+    save_images(tracked_img_output, output_img_dir, input_filename, epoch)
     dict_metadata[epoch] = {
         'input_img': tracked_img_input,
         'output_img': tracked_img_output,
