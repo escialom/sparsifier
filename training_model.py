@@ -58,7 +58,7 @@ def train_model(args):
     training_data = {}
     val_loss_dict = {}
     validation_data = {}
-    prev_val_loss = None
+    prev_val_loss_checked = None
     min_val_loss_diff = 1e-5
     epoch_range = tqdm(range(args.num_iter))
 
@@ -69,8 +69,6 @@ def train_model(args):
         num_batches = len(train_loader)
         batch_idx = 0
         for batch in train_loader:
-            if batch_idx % 300 == 0:
-                print(f"Epoch {epoch}, batch {batch_idx} started")
             input_imgs, _ = batch
             input_imgs = input_imgs.to(args.device)
             optimizer.zero_grad()
@@ -86,28 +84,26 @@ def train_model(args):
         epoch_loss = epoch_loss / num_batches
         epoch_loss_dict[epoch] = {'loss': epoch_loss}
 
-        # Display epoch loss during training
-        print(f'Epoch [{epoch}/{len(epoch_range)}], Loss: {epoch_loss:.4f}')
+        # Save ongoing training data every epoch
+        training_data[epoch] = {
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'epoch_loss': epoch_loss_dict[epoch].get('loss')
+        }
+        print(f'Epoch [{epoch}/{len(epoch_range)}], Training Loss: {epoch_loss:.5f}')
+        # Save ongoing validation data every epoch
+        val_loss = validate_model(model, val_loader, loss_func, epoch, optimizer, args.device)
+        val_loss_dict[epoch] = {'loss': val_loss}
+        # Store the current validation state, model, and optimizer info
+        validation_data[epoch] = {
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'val_loss': val_loss_dict[epoch].get('loss')
+        }
+        print(f'Epoch [{epoch}/{len(epoch_range)}], Validation Loss: {val_loss:.5f}')
 
-        # Save ongoing training data every N epochs (defined in args.save_interval)
-        if epoch % args.save_interval == 0:
-            # Gather current training data to the aggregated dictionary
-            training_data[epoch] = {
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'epoch_loss': epoch_loss_dict[epoch].get('loss')
-            }
-
-        # Validation step every N epochs (defined in args.eval_interval)
-        if epoch % args.eval_interval == 0:
-            val_loss = validate_model(model, val_loader, loss_func, epoch, optimizer, args.device)
-            val_loss_dict[epoch] = {'loss': val_loss}
-            # Store the current validation state, model, and optimizer info
-            validation_data[epoch] = {
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'val_loss': val_loss_dict[epoch].get('loss')
-            }
+        # Every N epochs (defined in args.check_interval), save tracked validation image and check for early stopping
+        if epoch > 0 and epoch % args.check_interval == 0:
             # Save the optimized (tracked) validation image and register its metadata
             with torch.no_grad():
                 tracked_output_img, intensity = model(tracked_img)
@@ -121,17 +117,26 @@ def train_model(args):
                                                     input_folder=args.val_set,
                                                     epoch=epoch)
             # Stop the training loop if the difference is less than the threshold
-            if prev_val_loss is not None:
-                val_loss_diff = abs(val_loss - prev_val_loss)
+            if prev_val_loss_checked is not None:
+                val_loss_diff = abs(val_loss - prev_val_loss_checked)
                 if val_loss_diff < min_val_loss_diff:
+                    # Update files before breaking the training
+                    torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))
+                    torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
+                    torch.save(data_tracked_val_img, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
                     print(f"Stopping training early at epoch {epoch} due to minimal validation loss improvement.")
                     break
-            prev_val_loss = val_loss
-            model.train()
+            prev_val_loss_checked = val_loss
+
+        # Update files
+        torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))
+        torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
+        torch.save(data_tracked_val_img, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
 
     # Get optimized validation images after training
     val_img_after_training = {}
     model.eval()
+    n_val_samples = 0
     for batch_idx, (batch, _) in enumerate(val_loader):
         for img_idx, img_sample in enumerate(batch):
             img_sample = img_sample.unsqueeze(0).to(args.device)
@@ -143,17 +148,15 @@ def train_model(args):
             output_img_dir = os.path.join(val_img_post_training_dir, os.path.dirname(relative_img_path))
             os.makedirs(output_img_dir, exist_ok=True)
             save_images(output_img, output_img_dir, input_filename, epoch)
-            val_img_after_training[img_idx] = {
+            val_img_after_training[n_val_samples] = {
                 'input_img': img_idx,
                 'output_img': output_img,
                 'intensity': torch.sum(intensity).item(),
                 'number_phosphenes': torch.sum(intensity > 0).item()
             }
+            n_val_samples += 1
 
-    # Save data gathered during training
-    torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))
-    torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
-    torch.save(data_tracked_val_img, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
+    # Save metadata of validation images
     torch.save(val_img_after_training, os.path.join(args.output_dir, "data_val_imgs_after_training.pth"))
 
     return model.state_dict()
@@ -173,6 +176,8 @@ def validate_model(model, validation_loader, loss_func, epoch, optimizer, device
             val_losses += loss.item()
     # Get the average validation loss of current epoch
     val_loss_epoch = val_losses / num_batches
+    # Set model back to training mode
+    model.train()
     return val_loss_epoch
 
 

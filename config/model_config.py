@@ -29,16 +29,15 @@ def parse_arguments():
     # =================================
     # =========== training ============
     # =================================
-    parser.add_argument("--train_set", type=str, default="./data_preprocessed/train_set")
-    parser.add_argument("--val_set", type=str, default="./data_preprocessed/val_set")
-    parser.add_argument("--num_iter", type=int, default=2501,
+    parser.add_argument("--train_set", type=str, default="./data/train_set")
+    parser.add_argument("--val_set", type=str, default="./data/val_set")
+    parser.add_argument("--num_iter", type=int, default=1,
                         help="number of optimization iterations")
     parser.add_argument("--lr_scheduler", type=int, default=0)
     parser.add_argument("--lr", type=float, default=1e-5)
-    parser.add_argument("--batch_size_training", type=int, default=16)
-    parser.add_argument("--batch_size_validation", type=int, default=16)
-    parser.add_argument("--save_interval", type=int, default=100)
-    parser.add_argument("--eval_interval", type=int, default=100)
+    parser.add_argument("--batch_size_training", type=int, default=2)
+    parser.add_argument("--batch_size_validation", type=int, default=2)
+    parser.add_argument("--check_interval", type=int, default=2)
     parser.add_argument("--image_scale", type=int, default=224)
 
     # =================================
