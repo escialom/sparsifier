@@ -12,3 +12,4 @@ clips/
 /scratch/
 *.pickle
 /data
+/output
