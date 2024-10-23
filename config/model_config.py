@@ -31,7 +31,7 @@ def parse_arguments():
     # =================================
     parser.add_argument("--train_set", type=str, default="./data/train_set")
     parser.add_argument("--val_set", type=str, default="./data/val_set")
-    parser.add_argument("--num_iter", type=int, default=6,
+    parser.add_argument("--num_iter", type=int, default=10,
                         help="number of optimization iterations")
     parser.add_argument("--lr_scheduler", type=int, default=0)
     parser.add_argument("--lr", type=float, default=1e-5)

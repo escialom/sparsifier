@@ -16,7 +16,7 @@ class InitMap(torch.nn.Module):
         self.image_scale = (self.args.image_scale, self.args.image_scale)
         self.init_map_soft_batch = torch.empty((1, 1, *self.image_scale), device=self.device)
 
-    def forward(self, img_batch, requires_grad):
+    def forward(self, img_batch, requires_grad=False):
         batch_size = img_batch.shape[0]
         if self.init_map_soft_batch.shape[0] != batch_size:
             self.init_map_soft_batch = torch.empty((batch_size, 1, *self.image_scale), device=self.device)

@@ -93,3 +93,21 @@ def val_img_properties(output_dir="./output", img_metadata_file="val_img_metadat
     plt.xticks(img_indices)
     plt.grid(axis='y')
     plt.show()
+
+
+def normalized_rescaling(phosphene_placement_map, max_stimulation_intensity=1):
+    """Normalize <img> and rescale the pixel intensities in the range [0, <stimulus_scale>].
+    <stimulus_scale> is defined in the parameter file.
+    The output image represents the stimulation intensity map.
+    return: image with rescaled pixel values (stimulation intensity map in Ampères)."""
+
+    img_norm = (phosphene_placement_map - phosphene_placement_map.min()) / (phosphene_placement_map.max() - phosphene_placement_map.min())
+    return img_norm * max_stimulation_intensity
+
+
+def make_lr_lambda(warm_up_epochs):
+    def lr_lambda(epoch):
+        if epoch < warm_up_epochs:
+            return float(epoch + 1) / float(warm_up_epochs)
+        return 1.0
+    return lr_lambda

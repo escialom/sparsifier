@@ -6,14 +6,15 @@ import traceback
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
-from config import model_config
 import dynaphos
+from utils import make_lr_lambda
+from config import model_config
 from model import PhospheneOptimizer
 from clipasso.models.loss import Loss
 
@@ -26,17 +27,24 @@ def train_model(args):
     val_dataset = ImageFolder(root=args.val_set, transform=transforms.ToTensor())
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size_validation, shuffle=False)
 
-    # Init model, optimizer and loss
+    # Init model and loss
     model = PhospheneOptimizer(args=args,
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
                                electrode_grid=1024,
                                batch_size=args.batch_size_training)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     loss_func = Loss(args)
+
+    # Prepare optimizer: warmup and cos decay schedule
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr) #1e-4
+    # Define lr_lambda for the warmup
+    warm_up_epochs = 50 #50
+    lr_lambda = make_lr_lambda(warm_up_epochs)
+    scheduler_warmup = LambdaLR(optimizer, lr_lambda=lr_lambda)
+    scheduler_cosine = CosineAnnealingLR(optimizer, T_max=600)  # 2501 T_max is the number of epochs over which the cosine decay completes
 
     # Keep track of a random validation image
     random.seed(args.seed)
-    tracked_img_idx = random.randint(0, len(val_loader))
+    tracked_img_idx = random.randint(0, len(val_loader)) # TODO: not only keep track of 1 image but like 10.
     tracked_img, _ = val_loader.dataset[tracked_img_idx]
     tracked_img = tracked_img.unsqueeze(0).to(args.device) # Add batch dimension
     data_tracked_val_img = {}
@@ -95,6 +103,13 @@ def train_model(args):
         epoch_loss = epoch_loss / num_batches
         epoch_loss_dict[epoch] = {'loss': epoch_loss}
 
+        # Apply lr warmup/decay
+        if epoch < warm_up_epochs:
+            scheduler_warmup.step()
+        else:
+            scheduler_cosine.step()
+        print(f"Current learning rate: {optimizer.param_groups[0]['lr']}")
+
         # Save ongoing training data every epoch
         training_data[epoch] = {
             'model_state_dict': model.state_dict(),
@@ -137,7 +152,7 @@ def train_model(args):
                     torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
                     torch.save(data_tracked_val_img, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
                     print(f"Stopping training early at epoch {epoch} due to minimal validation loss improvement.")
-                    break
+                    #break TODO: delete the break
             prev_val_loss_checked = val_loss
 
         # Update files
