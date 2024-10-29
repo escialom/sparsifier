@@ -21,13 +21,10 @@ def extract_background(args, input_folder, output_folder):
     for i, (path, _) in enumerate(dataset.samples):
         input_img, _ = dataset[i]
         input_img, mask = clipasso.painterly_rendering.get_target(args, input_img)
-        # Mask input images
-        mask_3d = mask.unsqueeze(1).repeat(1, 3, 1, 1)
-        masked_img = input_img * mask_3d
         # Get the original file name and the structure of parent folder to save preprocessed images accordingly
         original_filename = Path(path).stem
         relative_path = Path(path).relative_to(input_folder).parent
-        save_images(masked_img, output_folder, original_filename, relative_path)
+        save_images(input_img, output_folder, original_filename, relative_path)
 
 
 def save_images(img, output_folder, original_filename, relative_path):
