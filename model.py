@@ -55,11 +55,16 @@ class MiniConvNet(nn.Module):
             torch.use_deterministic_algorithms(True)
 
         self.localization = nn.Sequential(
-            nn.Conv2d(1, 32, 3, stride=1, padding=0),
+            nn.Conv2d(1, 64, 3, stride=1, padding=0),
+            nn.BatchNorm2d(64),
             nn.LeakyReLU(),
-            nn.Conv2d(32, 64, 3, stride=2, padding=0),
+            #nn.Dropout(0.3),  # Dropout layer with 30% dropout rate
+            nn.Conv2d(64, 128, 3, stride=2, padding=0),
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(),
-            nn.Conv2d(64, 1, 3, stride=1, padding=0),
+            #nn.Dropout(0.3),  # Dropout layer with 30% dropout rate
+            nn.Conv2d(128, 1, 3, stride=1, padding=0),
+            nn.BatchNorm2d(1),
             nn.LeakyReLU()
         )
         self.conv_padding = nn.Sequential(
@@ -108,10 +113,10 @@ class PhospheneOptimizer(nn.Module):
         optimized_im = optimized_im.permute(1, 0, 2, 3)
         optimized_im = optimized_im.repeat(1, 3, 1, 1)
         # detach and delete variables to save memory
-        contours = contours.detach()
-        del contours
-        phosphene_placement_map = phosphene_placement_map.detach()
-        del phosphene_placement_map
+        # contours = contours.detach()
+        # del contours
+        # phosphene_placement_map = phosphene_placement_map.detach()
+        # del phosphene_placement_map
         return optimized_im, stim_intensity
 
     def normalized_rescaling(self, phosphene_placement_map, max_stimulation_intensity=1):

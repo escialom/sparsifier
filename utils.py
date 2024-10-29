@@ -1,6 +1,19 @@
 import torch
+import random
 import os
 import matplotlib.pyplot as plt
+
+import clipasso.sketch_utils as clipasso_utils
+
+
+def mask_input_imgs(args, input_imgs):
+    masked_img_batch = torch.empty((input_imgs.shape[0], 3, args.image_scale, args.image_scale), device=args.device)
+    for i in range(input_imgs.shape[0]):
+        masked_im, mask = clipasso_utils.get_mask_u2net(args, input_imgs[i])
+        masked_im = masked_im.permute(2, 0, 1).unsqueeze(0)
+        masked_img_batch[i] = masked_im
+
+    return masked_img_batch
 
 
 def get_memory_allocated(batch_idx, check_step, train_step='optimizer.step()'):
@@ -33,7 +46,6 @@ def plot_losses(output_dir="./output", train_filename="training_data_checkpoints
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, train_losses, label='Training Loss', marker='o')
     plt.plot(epochs, val_losses, label='Validation Loss', marker='x')
-    plt.xticks(epochs)
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.title('Training and Validation Loss Over Epochs')
@@ -93,6 +105,102 @@ def val_img_properties(output_dir="./output", img_metadata_file="val_img_metadat
     plt.xticks(img_indices)
     plt.grid(axis='y')
     plt.show()
+
+
+def plot_optimized_img(output_imgs):
+    out = output_imgs.squeeze(0)
+    out = out.permute(1, 2, 0)
+    numpy_img = out.numpy()
+    numpy_img = (numpy_img - numpy_img.min()) / (numpy_img.max() - numpy_img.min())
+    plt.imshow(numpy_img, cmap='gray')
+    plt.axis('off')  # Turn off axis labels
+    plt.show()
+
+
+def save_images(output_imgs, save_prefix, input_filename, epoch_idx, at_init=False):
+    for i in range(output_imgs.shape[0]):
+        img = output_imgs[i]
+        img_np = img.detach().permute(1, 2, 0).cpu().numpy()
+        img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min())
+        if at_init:
+            filename_output = f"{input_filename}_phos_model_init.png"
+        else:
+            filename_output = f"{input_filename}_phos_{epoch_idx}_{i}.png"
+        plt.imsave(os.path.join(save_prefix, filename_output), img_np)
+
+
+def create_dir(output_dir, epoch):
+    epoch_path_dir = os.path.join(output_dir, f"epoch_{epoch}")
+    if not os.path.exists(epoch_path_dir):
+        os.mkdir(epoch_path_dir)
+    return epoch_path_dir
+
+
+def save_tracked_img(output_dir, tracked_img_input, tracked_img_output, stimulation_intensity, dict_metadata, val_dataset, tracked_img_idx, input_folder, epoch, at_init=False):
+    if isinstance(val_dataset, torch.utils.data.DataLoader):
+        val_dataset = val_dataset.dataset
+    epoch_path_dir = create_dir(output_dir, epoch)
+    img_path, _ = val_dataset.samples[tracked_img_idx]
+    relative_path = os.path.relpath(img_path, input_folder)
+    input_filename = os.path.splitext(os.path.basename(relative_path))[0]
+    output_img_dir = os.path.join(epoch_path_dir, os.path.dirname(relative_path))
+    os.makedirs(output_img_dir, exist_ok=True)
+    save_images(tracked_img_output, output_img_dir, input_filename, epoch, at_init)
+    dict_metadata[epoch] = {
+        'input_img': tracked_img_input,
+        'output_img': tracked_img_output,
+        'stim_intensity': torch.sum(stimulation_intensity).item(),
+        'number_phosphenes': torch.sum(stimulation_intensity > 0).item()
+    }
+    return dict_metadata
+
+
+def track_val_imgs(args, n_img_tracked, dataloader, model, data_tracked_val_imgs, device='cpu', seed=None):
+    """
+    Track a specified number of validation images during training.
+
+    Args:
+        n_img_tracked (int): Number of validation images to track.
+        dataloader (DataLoader): DataLoader for the validation dataset.
+        model (torch.nn.Module): The neural network model.
+        device (str): Device to perform computations on ('cpu' or 'cuda').
+        seed (int, optional): Seed for reproducibility of random image selection.
+
+    Returns:
+        dict: Dictionary containing tracked image data.
+    """
+    # Set random seed for reproducibility if provided
+    if seed is not None:
+        random.seed(seed)
+
+    tracked_img_indices = random.sample(range(len(dataloader.dataset)), n_img_tracked)
+    tracked_imgs = []
+
+    # Retrieve and prepare each tracked image
+    for idx in tracked_img_indices:
+        tracked_img, _ = dataloader.dataset[idx]
+        tracked_img = tracked_img.unsqueeze(0).to(device)  # Add batch dimension
+        tracked_imgs.append((idx, tracked_img))
+        if idx not in data_tracked_val_imgs:
+            data_tracked_val_imgs[idx] = {}
+
+    # Set model to evaluation mode and track images
+    model.eval()
+    with torch.no_grad():
+        for idx, tracked_img in tracked_imgs:
+            tracked_output_img, intensity = model(tracked_img)
+            data_tracked_val_imgs[idx] = save_tracked_img(args.output_dir,
+                                                          tracked_img,
+                                                          tracked_output_img,
+                                                          intensity,
+                                                          data_tracked_val_imgs[idx],
+                                                          dataloader,
+                                                          idx,
+                                                          input_folder=args.val_set,
+                                                          epoch=0,
+                                                          at_init=True)
+
+    return data_tracked_val_imgs, tracked_imgs
 
 
 def normalized_rescaling(phosphene_placement_map, max_stimulation_intensity=1):
