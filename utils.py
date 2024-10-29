@@ -1,7 +1,12 @@
 import torch
 import random
+import shutil
+from pathlib import Path
 import os
 import matplotlib.pyplot as plt
+from torchvision.utils import save_image
+from torchvision import transforms
+from PIL import Image
 
 import clipasso.sketch_utils as clipasso_utils
 
@@ -14,6 +19,154 @@ def mask_input_imgs(args, input_imgs):
         masked_img_batch[i] = masked_im
 
     return masked_img_batch
+
+
+def copy_random_images_per_class(source_dir, destination_dir, num_images_per_class=10):
+    """
+    Copies a specified number of random images from each class in the source directory to the destination directory,
+    preserving the folder structure and filenames.
+
+    Args:
+        source_dir (str): Directory containing class subdirectories with images.
+        destination_dir (str): Directory to save the selected images.
+        num_images_per_class (int): Number of random images to copy per class.
+    """
+    # Create destination directory if it doesn't exist
+    os.makedirs(destination_dir, exist_ok=True)
+
+    # Loop through each class folder in the source directory
+    for class_folder in os.listdir(source_dir):
+        class_path = os.path.join(source_dir, class_folder)
+
+        # Only process directories (i.e., class folders)
+        if os.path.isdir(class_path):
+            # List all image files in the class folder
+            image_files = [file for file in os.listdir(class_path) if file.lower().endswith(('.png', '.jpg', '.jpeg'))]
+
+            # Randomly select the specified number of images
+            selected_images = random.sample(image_files, min(num_images_per_class, len(image_files)))
+
+            # Create the same class folder in the destination directory
+            destination_class_folder = os.path.join(destination_dir, class_folder)
+            os.makedirs(destination_class_folder, exist_ok=True)
+
+            # Copy each selected image to the destination folder
+            for image_file in selected_images:
+                source_image_path = os.path.join(class_path, image_file)
+                destination_image_path = os.path.join(destination_class_folder, image_file)
+                shutil.copy2(source_image_path, destination_image_path)
+
+
+def load_image(image_path):
+    """Loads an image from the given path and transforms it to a tensor."""
+    transform = transforms.Compose([
+        transforms.ToTensor(),  # Converts to tensor and normalizes to [0, 1]
+    ])
+    image = Image.open(image_path).convert('RGB')  # Ensures the image is RGB
+    return transform(image)
+
+
+def track_images(model, input_dir, output_dir, epoch=0, at_init=False):
+    """
+    Generates and saves images for each input image in the specified directory,
+    preserving the folder structure and adding a prefix to the filenames.
+
+    Args:
+        model (torch.nn.Module): The trained model to generate images.
+        input_dir (str): Directory containing class subdirectories with images to process.
+        output_dir (str): Directory to save the generated images.
+        epoch (int): The current epoch number for filename prefixing.
+        at_init (bool): Flag to indicate if images are saved at initialization.
+    """
+    # Create the output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    model.eval()  # Set the model to evaluation mode
+    with torch.no_grad():
+        # Walk through the input directory
+        for root, _, files in os.walk(input_dir):
+            for file_name in files:
+                if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    # Generate the full path for the input image
+                    input_image_path = os.path.join(root, file_name)
+
+                    # Load the input image
+                    input_image = load_image(input_image_path).unsqueeze(0)  # Add batch dimension
+
+                    # Generate the output image
+                    output_image = model(input_image)[0]  # Assumes model returns output
+
+                    # Determine the output directory structure
+                    relative_path = os.path.relpath(root, input_dir)
+                    output_class_dir = os.path.join(output_dir, relative_path)
+                    os.makedirs(output_class_dir, exist_ok=True)
+
+                    # Create the output file path with prefix
+                    prefix = "at_init_" if at_init else f"epoch_{epoch}_"
+                    output_file_path = os.path.join(output_class_dir, f"{prefix}{Path(file_name).stem}.png")
+
+                    # Save the output image
+                    save_image(output_image, output_file_path)
+
+
+def save_epoch_images(model, dataloader, epoch=0, output_dir='saved_images', num_images_per_class=10, num_classes=1,
+                      at_init=False):
+    """
+    Saves generated images for each class during each epoch using class names from the dataloader,
+    with the original filename preserved and a prefix added.
+
+    Args:
+        model (torch.nn.Module): The trained model to generate images.
+        dataloader (torch.utils.data.DataLoader): DataLoader for the dataset.
+        epoch (int): The current epoch number.
+        output_dir (str): Directory to save the images.
+        num_images_per_class (int): Number of images to save per class.
+        num_classes (int): Number of classes in the dataset.
+        at_init (bool): Flag to indicate if images are saved at initialization.
+    """
+    # Get the class names from the dataset
+    class_to_idx = dataloader.dataset.class_to_idx
+    idx_to_class = {v: k for k, v in class_to_idx.items()}
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Dictionary to track the saved images per class
+    class_images = {cls: 0 for cls in range(num_classes)}
+
+    model.eval()  # Set model to evaluation mode
+    with torch.no_grad():
+        for batch_idx, (inputs, labels) in enumerate(dataloader):
+            outputs, _ = model(inputs)  # Generate images with the model
+
+            # Loop through each item in the batch
+            for i in range(len(labels)):
+                cls = labels[i].item()
+                class_name = idx_to_class[cls]  # Get class name from index
+
+                # Only save if we haven't reached the limit for this class
+                if class_images[cls] < num_images_per_class:
+                    # Get the original filename without the extension
+                    original_path = dataloader.dataset.samples[batch_idx * len(labels) + i][0]
+                    original_filename = Path(original_path).stem
+
+                    # Create the class directory based on the inherited class name
+                    class_dir = os.path.join(output_dir, class_name)
+                    os.makedirs(class_dir, exist_ok=True)
+
+                    # Set the prefixed filename
+                    prefix = f'at_init_' if at_init else f'epoch_{epoch}_'
+                    image_path = os.path.join(class_dir, f'{prefix}{original_filename}.png')
+
+                    # Save the output image
+                    save_image(outputs[i], image_path)
+
+                    # Update count for the class
+                    class_images[cls] += 1
+
+                # Stop if all classes have enough images
+                if all(count >= num_images_per_class for count in class_images.values()):
+                    return
 
 
 def get_memory_allocated(batch_idx, check_step, train_step='optimizer.step()'):

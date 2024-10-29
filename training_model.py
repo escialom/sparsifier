@@ -42,9 +42,21 @@ def train_model(args):
     scheduler_warmup = LambdaLR(optimizer, lr_lambda=lr_lambda)
     scheduler_cosine = CosineAnnealingLR(optimizer, T_max=args.num_iter)  # T_max is the number of epochs over which the cosine decay completes
 
-    # Keep track of random validation images
-    data_tracked_val_imgs = {}
-    #data_tracked_val_imgs, tracked_val_imgs = utils.track_val_imgs(args, 10, val_loader, model, data_tracked_val_imgs, args.device, seed=40)
+    # Keep track of random training and validation images
+    utils.copy_random_images_per_class(source_dir=args.train_set,
+                                       destination_dir=os.path.join(args.output_dir, "train_img_og"),
+                                       num_images_per_class=3)
+    utils.copy_random_images_per_class(source_dir=args.val_set,
+                                       destination_dir=os.path.join(args.output_dir, "val_img_og"),
+                                       num_images_per_class=3)
+    utils.track_images(model,
+                       input_dir=os.path.join(args.output_dir, "train_img_og"),
+                       output_dir=os.path.join(args.output_dir, "train_img_tracking"),
+                       at_init=True)
+    utils.track_images(model,
+                       input_dir=os.path.join(args.output_dir, "val_img_og"),
+                       output_dir=os.path.join(args.output_dir, "val_img_tracking"),
+                       at_init=True)
 
     # Prepare training loop
     epoch_loss_dict = {}
@@ -82,6 +94,7 @@ def train_model(args):
             input_imgs = input_imgs.to(args.device)
             optimizer.zero_grad()
             output_imgs, _ = model(input_imgs)
+            # Mask input images to get black background for the loss calculation
             masked_imgs = utils.mask_input_imgs(args, input_imgs)
             losses_dict = loss_func(output_imgs, masked_imgs, model.parameters(), epoch, optimizer, mode = "train")
             loss = sum(losses_dict.values())
@@ -124,18 +137,14 @@ def train_model(args):
         # Every N epochs (defined in args.check_interval), save tracked validation image and check for early stopping
         if epoch >= 0 and epoch % args.check_interval == 0:
             # Save the optimized (tracked) validation image and register its metadata
-            for idx, tracked_img in tracked_val_imgs:
-                with torch.no_grad():
-                    tracked_output_img, intensity = model(tracked_img)
-                data_tracked_val_imgs[idx] = utils.save_tracked_img(args.output_dir,
-                                                                    tracked_img,
-                                                                    tracked_output_img,
-                                                                    intensity,
-                                                                    data_tracked_val_imgs[idx],
-                                                                    val_dataset,
-                                                                    idx,
-                                                                    input_folder=args.val_set,
-                                                                    epoch=epoch)
+            utils.track_images(model,
+                               input_dir=os.path.join(args.output_dir, "train_img_og"),
+                               output_dir=os.path.join(args.output_dir, "train_img_tracking"),
+                               epoch=epoch)
+            utils.track_images(model,
+                               input_dir=os.path.join(args.output_dir, "val_img_og"),
+                               output_dir=os.path.join(args.output_dir, "val_img_tracking"),
+                               epoch=epoch)
 
             # Check if convergence criterion is met
             if prev_val_loss_checked is not None:
@@ -144,14 +153,14 @@ def train_model(args):
                     # Update files before breaking the training
                     torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))
                     torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
-                    torch.save(data_tracked_val_imgs, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
+                    #torch.save(data_tracked_val_imgs, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
                     print(f"Convergence criterion met at epoch {epoch}.")
             prev_val_loss_checked = val_loss
 
         # Update files
         torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))
         torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
-        torch.save(data_tracked_val_imgs, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
+        #torch.save(data_tracked_val_imgs, os.path.join(args.output_dir, "data_tracked_validation_img.pth"))
 
         # Update variables for plotting
         epochs.append(epoch)
@@ -225,42 +234,6 @@ def validate_model(model, validation_loader, loss_func, epoch, optimizer, device
     # Set model back to training mode
     model.train()
     return val_loss_epoch
-
-
-# def create_dir(output_dir, epoch):
-#     epoch_path_dir = os.path.join(output_dir, f"epoch_{epoch}")
-#     if not os.path.exists(epoch_path_dir):
-#         os.mkdir(epoch_path_dir)
-#     return epoch_path_dir
-#
-#
-# def save_images(output_imgs, save_prefix, input_filename, epoch_idx, at_init=False):
-#     for i in range(output_imgs.shape[0]):
-#         img = output_imgs[i]
-#         img_np = img.detach().permute(1, 2, 0).cpu().numpy()
-#         img_np = (img_np - img_np.min()) / (img_np.max() - img_np.min())
-#         if at_init:
-#             filename_output = f"{input_filename}_phos_model_init.png"
-#         else:
-#             filename_output = f"{input_filename}_phos_{epoch_idx}_{i}.png"
-#         plt.imsave(os.path.join(save_prefix, filename_output), img_np)
-#
-#
-# def save_tracked_img(output_dir, tracked_img_input, tracked_img_output, stimulation_intensity, dict_metadata, val_dataset, tracked_img_idx, input_folder, epoch, at_init=False):
-#     epoch_path_dir = create_dir(output_dir, epoch)
-#     img_path, _ = val_dataset.samples[tracked_img_idx]
-#     relative_path = os.path.relpath(img_path, input_folder)
-#     input_filename = os.path.splitext(os.path.basename(relative_path))[0]
-#     output_img_dir = os.path.join(epoch_path_dir, os.path.dirname(relative_path))
-#     os.makedirs(output_img_dir, exist_ok=True)
-#     save_images(tracked_img_output, output_img_dir, input_filename, epoch, at_init)
-#     dict_metadata[epoch] = {
-#         'input_img': tracked_img_input,
-#         'output_img': tracked_img_output,
-#         'stim_intensity': torch.sum(stimulation_intensity).item(),
-#         'number_phosphenes': torch.sum(stimulation_intensity > 0).item()
-#     }
-#     return dict_metadata
 
 
 if __name__ == "__main__":
