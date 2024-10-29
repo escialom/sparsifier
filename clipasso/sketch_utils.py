@@ -247,7 +247,7 @@ def fix_image_scale(im):
     return new_im
 
 
-def get_mask_u2net(args, im_tensor):
+def get_mask_u2net_custom(args, im_tensor):
     w, h = im_tensor.shape[1], im_tensor.shape[2]
     data_transforms = transforms.Compose([transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073),
                                                                std=(0.26862954, 0.26130258, 0.27577711)),])
@@ -283,51 +283,51 @@ def get_mask_u2net(args, im_tensor):
     return masked_im, predict
 
 
-# def get_mask_u2net(args, pil_im):
-#     w, h = pil_im.size[0], pil_im.size[1]
-#     im_size = min(w, h)
-#     data_transforms = transforms.Compose([
-#         transforms.Resize(min(320, im_size), interpolation=PIL.Image.BICUBIC),
-#         transforms.ToTensor(),
-#         transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073), std=(
-#             0.26862954, 0.26130258, 0.27577711)),
-#     ])
-#
-#     input_im_trans = data_transforms(pil_im).unsqueeze(0).to(args.device)
-#
-#     model_dir = os.path.join("./clipasso/U2Net_/saved_models/u2net.pth")
-#     net = U2NET(3, 1)
-#     if torch.cuda.is_available() and args.use_gpu:
-#         net.load_state_dict(torch.load(model_dir))
-#         net.to(args.device)
-#     else:
-#         net.load_state_dict(torch.load(model_dir, map_location='cpu'))
-#     net.eval()
-#     with torch.no_grad():
-#         d1, d2, d3, d4, d5, d6, d7 = net(input_im_trans.detach())
-#     pred = d1[:, 0, :, :]
-#     pred = (pred - pred.min()) / (pred.max() - pred.min())
-#     predict = pred
-#     predict[predict < 0.5] = 0
-#     predict[predict >= 0.5] = 1
-#     mask = torch.cat([predict, predict, predict], axis=0).permute(1, 2, 0)
-#     mask = mask.cpu().numpy()
-#     mask = resize(mask, (h, w), anti_aliasing=False)
-#     mask[mask < 0.5] = 0
-#     mask[mask >= 0.5] = 1
-#
-#     # predict_np = predict.clone().cpu().data.numpy()
-#     im = Image.fromarray((mask[:, :, 0]*255).astype(np.uint8)).convert('RGB')
-#     im.save(f"{args.output_dir}/mask.png")
-#
-#     im_np = np.array(pil_im)
-#     im_np = im_np / im_np.max()
-#     im_np = mask * im_np
-#     im_np[mask == 0] = 1
-#     im_final = (im_np / im_np.max() * 255).astype(np.uint8)
-#     im_final = Image.fromarray(im_final)
-#
-#     return im_final, predict
+def get_mask_u2net(args, pil_im):
+    w, h = pil_im.size[0], pil_im.size[1]
+    im_size = min(w, h)
+    data_transforms = transforms.Compose([
+        transforms.Resize(min(320, im_size), interpolation=PIL.Image.BICUBIC),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073), std=(
+            0.26862954, 0.26130258, 0.27577711)),
+    ])
+
+    input_im_trans = data_transforms(pil_im).unsqueeze(0).to(args.device)
+
+    model_dir = os.path.join("./clipasso/U2Net_/saved_models/u2net.pth")
+    net = U2NET(3, 1)
+    if torch.cuda.is_available() and args.use_gpu:
+        net.load_state_dict(torch.load(model_dir))
+        net.to(args.device)
+    else:
+        net.load_state_dict(torch.load(model_dir, map_location='cpu'))
+    net.eval()
+    with torch.no_grad():
+        d1, d2, d3, d4, d5, d6, d7 = net(input_im_trans.detach())
+    pred = d1[:, 0, :, :]
+    pred = (pred - pred.min()) / (pred.max() - pred.min())
+    predict = pred
+    predict[predict < 0.5] = 0
+    predict[predict >= 0.5] = 1
+    mask = torch.cat([predict, predict, predict], axis=0).permute(1, 2, 0)
+    mask = mask.cpu().numpy()
+    mask = resize(mask, (h, w), anti_aliasing=False)
+    mask[mask < 0.5] = 0
+    mask[mask >= 0.5] = 1
+
+    # predict_np = predict.clone().cpu().data.numpy()
+    im = Image.fromarray((mask[:, :, 0]*255).astype(np.uint8)).convert('RGB')
+    im.save(f"{args.output_dir}/mask.png")
+
+    im_np = np.array(pil_im)
+    im_np = im_np / im_np.max()
+    im_np = mask * im_np
+    im_np[mask == 0] = 1
+    im_final = (im_np / im_np.max() * 255).astype(np.uint8)
+    im_final = Image.fromarray(im_final)
+
+    return im_final, predict
 
 
 def count_args(model):

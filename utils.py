@@ -14,7 +14,7 @@ import clipasso.sketch_utils as clipasso_utils
 def mask_input_imgs(args, input_imgs):
     masked_img_batch = torch.empty((input_imgs.shape[0], 3, args.image_scale, args.image_scale), device=args.device)
     for i in range(input_imgs.shape[0]):
-        masked_im, mask = clipasso_utils.get_mask_u2net(args, input_imgs[i])
+        masked_im, mask = clipasso_utils.get_mask_u2net_custom(args, input_imgs[i])
         masked_im = masked_im.permute(2, 0, 1).unsqueeze(0)
         masked_img_batch[i] = masked_im
 
