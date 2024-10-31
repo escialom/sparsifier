@@ -58,11 +58,11 @@ class MiniConvNet(nn.Module):
             nn.Conv2d(1, 64, 3, stride=1, padding=0),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(),
-            #nn.Dropout(0.3),  # Dropout layer with 30% dropout rate
+            nn.Dropout(0.3),  # Dropout layer with 30% dropout rate
             nn.Conv2d(64, 128, 3, stride=2, padding=0),
             nn.BatchNorm2d(128),
             nn.LeakyReLU(),
-            #nn.Dropout(0.3),  # Dropout layer with 30% dropout rate
+            nn.Dropout(0.3),  # Dropout layer with 30% dropout rate
             nn.Conv2d(128, 1, 3, stride=1, padding=0),
             nn.BatchNorm2d(1),
             nn.LeakyReLU()

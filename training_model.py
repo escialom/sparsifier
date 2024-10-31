@@ -27,6 +27,9 @@ def train_model(args):
     val_dataset = ImageFolder(root=args.val_set, transform=transforms.ToTensor())
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size_validation, shuffle=False)
 
+    # Init class for segmenting images
+    mask_imgs = utils.MaskImgs(args)
+
     # Init model and loss
     model = PhospheneOptimizer(args=args,
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
@@ -45,10 +48,10 @@ def train_model(args):
     # Keep track of random training and validation images
     utils.copy_random_images_per_class(source_dir=args.train_set,
                                        destination_dir=os.path.join(args.output_dir, "train_img_og"),
-                                       num_images_per_class=3)
+                                       num_images_per_class=10)
     utils.copy_random_images_per_class(source_dir=args.val_set,
                                        destination_dir=os.path.join(args.output_dir, "val_img_og"),
-                                       num_images_per_class=3)
+                                       num_images_per_class=10)
     utils.track_images(model,
                        input_dir=os.path.join(args.output_dir, "train_img_og"),
                        output_dir=os.path.join(args.output_dir, "train_img_tracking"),
@@ -95,7 +98,7 @@ def train_model(args):
             optimizer.zero_grad()
             output_imgs, _ = model(input_imgs)
             # Mask input images to get black background for the loss calculation
-            masked_imgs = utils.mask_input_imgs(args, input_imgs)
+            masked_imgs, _ = mask_imgs(input_imgs)
             losses_dict = loss_func(output_imgs, masked_imgs, model.parameters(), epoch, optimizer, mode = "train")
             loss = sum(losses_dict.values())
             loss.backward()
@@ -124,7 +127,7 @@ def train_model(args):
         print(f'Epoch [{epoch}/{len(epoch_range)}], Training Loss: {epoch_loss:.5f}')
 
         # Save ongoing validation data every epoch
-        val_loss = validate_model(model, val_loader, loss_func, epoch, optimizer, args.device)
+        val_loss = validate_model(model, mask_imgs, val_loader, loss_func, epoch, optimizer, args.device)
         val_loss_dict[epoch] = {'loss': val_loss}
         # Store the current validation state, model, and optimizer info
         validation_data[epoch] = {
@@ -217,7 +220,7 @@ def train_model(args):
     return model.state_dict()
 
 
-def validate_model(model, validation_loader, loss_func, epoch, optimizer, device):
+def validate_model(model, mask_imgs, validation_loader, loss_func, epoch, optimizer, device):
     model.eval()
     val_losses = 0.0
     num_batches = len(validation_loader)
@@ -226,7 +229,9 @@ def validate_model(model, validation_loader, loss_func, epoch, optimizer, device
         input_imgs = input_imgs.to(device)
         with torch.no_grad():
             output_imgs, _ = model(input_imgs)
-            losses_dict = loss_func(output_imgs, input_imgs, model.parameters(), epoch, optimizer, mode="eval")
+            # Mask input images to get black background for the loss calculation
+            masked_imgs, _ = mask_imgs(input_imgs)
+            losses_dict = loss_func(output_imgs, masked_imgs, model.parameters(), epoch, optimizer, mode="eval")
             loss = sum(losses_dict.values())
             val_losses += loss.item()
     # Get the average validation loss of current epoch

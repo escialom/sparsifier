@@ -7,54 +7,77 @@ import matplotlib.pyplot as plt
 from torchvision.utils import save_image
 from torchvision import transforms
 from PIL import Image
+import torch.nn.functional as F
+from clipasso.U2Net_.model import U2NET
 
-import clipasso.sketch_utils as clipasso_utils
 
+class MaskImgs:
+    def __init__(self, args):
+        self.device = args.device
+        model_dir = os.path.join("./clipasso/U2Net_/saved_models/u2net.pth")
+        self.net = U2NET(3, 1)
+        self.net.load_state_dict(torch.load(model_dir, map_location=self.device, weights_only=True))
+        self.net.to(self.device).eval()
+        self.data_transforms = transforms.Compose([
+            transforms.Normalize(mean=(0.48145466, 0.4578275, 0.40821073),
+                                 std=(0.26862954, 0.26130258, 0.27577711))
+        ])
 
-def mask_input_imgs(args, input_imgs):
-    masked_img_batch = torch.empty((input_imgs.shape[0], 3, args.image_scale, args.image_scale), device=args.device)
-    for i in range(input_imgs.shape[0]):
-        masked_im, mask = clipasso_utils.get_mask_u2net_custom(args, input_imgs[i])
-        masked_im = masked_im.permute(2, 0, 1).unsqueeze(0)
-        masked_img_batch[i] = masked_im
+    def forward(self, im_batch):
 
-    return masked_img_batch
+        im_batch = self.data_transforms(im_batch).to(self.device)
+        with torch.no_grad():
+            d1, *_ = self.net(im_batch)
+        # Normalize and threshold
+        pred = d1[:, 0, :, :]
+        pred = (pred - pred.min()) / (pred.max() - pred.min())
+        mask = (pred >= 0.5).float()  # Binary mask
+        # Resize and apply mask
+        _, _, w, h = im_batch.shape
+        mask = F.interpolate(mask.unsqueeze(1), size=(w, h), mode='bilinear', align_corners=False)
+        mask = torch.cat([mask] * 3, dim=1)  # Expand to 3 channels for RGB compatibility
+        masked_images = mask * im_batch
+        masked_images[mask == 0] = 0
+        masked_images = torch.clamp(masked_images, min=0.0, max=1.0)
+
+        return masked_images, mask
+
+    def __call__(self, im_batch):
+        return self.forward(im_batch)
 
 
 def copy_random_images_per_class(source_dir, destination_dir, num_images_per_class=10):
     """
-    Copies a specified number of random images from each class in the source directory to the destination directory,
-    preserving the folder structure and filenames.
+    Copies a specified number of random images per class from source directory
+    (structured as source_dir/sub_dir/class_folder) to a target directory,
+    preserving the class folder structure.
 
     Args:
-        source_dir (str): Directory containing class subdirectories with images.
-        destination_dir (str): Directory to save the selected images.
-        num_images_per_class (int): Number of random images to copy per class.
+        source_dir (str): Root directory containing subdirectories with class folders.
+        target_dir (str): Destination directory to copy images to, preserving structure.
+        num_images (int): Number of random images to copy per class.
     """
-    # Create destination directory if it doesn't exist
+    # Create the target directory if it does not exist
     os.makedirs(destination_dir, exist_ok=True)
 
-    # Loop through each class folder in the source directory
-    for class_folder in os.listdir(source_dir):
-        class_path = os.path.join(source_dir, class_folder)
+    # Walk through each subdirectory in source_dir looking for class folders
+    for sub_dir in Path(source_dir).iterdir():
+        if sub_dir.is_dir():  # Only process directories within source_dir
+            for class_folder in sub_dir.iterdir():
+                if class_folder.is_dir():  # Only process class folders within sub_dir
+                    # List all image files in the class folder
+                    image_files = [file for file in class_folder.iterdir() if file.is_file() and file.suffix.lower() in {'.jpg', '.jpeg', '.png'}]
 
-        # Only process directories (i.e., class folders)
-        if os.path.isdir(class_path):
-            # List all image files in the class folder
-            image_files = [file for file in os.listdir(class_path) if file.lower().endswith(('.png', '.jpg', '.jpeg'))]
+                    # Select random images
+                    selected_images = random.sample(image_files, min(num_images_per_class, len(image_files)))
 
-            # Randomly select the specified number of images
-            selected_images = random.sample(image_files, min(num_images_per_class, len(image_files)))
+                    # Create target class folder
+                    target_class_folder = Path(destination_dir) / sub_dir.name / class_folder.name
+                    os.makedirs(target_class_folder, exist_ok=True)
 
-            # Create the same class folder in the destination directory
-            destination_class_folder = os.path.join(destination_dir, class_folder)
-            os.makedirs(destination_class_folder, exist_ok=True)
-
-            # Copy each selected image to the destination folder
-            for image_file in selected_images:
-                source_image_path = os.path.join(class_path, image_file)
-                destination_image_path = os.path.join(destination_class_folder, image_file)
-                shutil.copy2(source_image_path, destination_image_path)
+                    # Copy selected images to the target directory
+                    for image in selected_images:
+                        shutil.copy(image, target_class_folder / image.name)
 
 
 def load_image(image_path):
