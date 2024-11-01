@@ -1,5 +1,5 @@
+import copy
 import os
-import random
 import sys
 import torch
 import traceback
@@ -39,7 +39,6 @@ def train_model(args):
 
     # Prepare optimizer: warmup and cos decay schedule
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    # Define lr_lambda for the warmup
     warm_up_epochs = 50 #50
     lr_lambda = utils.make_lr_lambda(warm_up_epochs)
     scheduler_warmup = LambdaLR(optimizer, lr_lambda=lr_lambda)
@@ -106,7 +105,6 @@ def train_model(args):
             optimizer.step()
             epoch_loss += loss.item()
             batch_idx += 1
-        # Save loss of each epoch
         epoch_loss = epoch_loss / num_batches
         epoch_loss_dict[epoch] = {'loss': epoch_loss}
 
@@ -120,8 +118,8 @@ def train_model(args):
 
         # Save ongoing training data every epoch
         training_data[epoch] = {
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
+            'model_state_dict': copy.deepcopy(model.state_dict()),
+            'optimizer_state_dict': copy.deepcopy(optimizer.state_dict()),
             'epoch_loss': epoch_loss_dict[epoch].get('loss')
         }
         print(f'Epoch [{epoch}/{len(epoch_range)}], Training Loss: {epoch_loss:.5f}')
@@ -131,8 +129,8 @@ def train_model(args):
         val_loss_dict[epoch] = {'loss': val_loss}
         # Store the current validation state, model, and optimizer info
         validation_data[epoch] = {
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
+            'model_state_dict': copy.deepcopy(model.state_dict()),
+            'optimizer_state_dict': copy.deepcopy(optimizer.state_dict()),
             'val_loss': val_loss_dict[epoch].get('loss')
         }
         print(f'Epoch [{epoch}/{len(epoch_range)}], Validation Loss: {val_loss:.5f}')
@@ -148,6 +146,8 @@ def train_model(args):
                                input_dir=os.path.join(args.output_dir, "val_img_og"),
                                output_dir=os.path.join(args.output_dir, "val_img_tracking"),
                                epoch=epoch)
+            # Put model back to training mode
+            model.train()
 
             # Check if convergence criterion is met
             if prev_val_loss_checked is not None:

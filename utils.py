@@ -117,7 +117,7 @@ def track_images(model, input_dir, output_dir, epoch=0, at_init=False):
                     input_image = load_image(input_image_path).unsqueeze(0)  # Add batch dimension
 
                     # Generate the output image
-                    output_image = model(input_image)[0]  # Assumes model returns output
+                    output_image, _ = model(input_image)  # Assumes model returns output
 
                     # Determine the output directory structure
                     relative_path = os.path.relpath(root, input_dir)
