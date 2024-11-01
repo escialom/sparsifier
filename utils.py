@@ -46,6 +46,13 @@ class MaskImgs:
         return self.forward(im_batch)
 
 
+def mask_imgs(imgs, masks):
+    masked_imgs = masks * imgs
+    masked_imgs[masks == 0] = 0
+    masked_imgs = torch.clamp(masked_imgs, min=0.0, max=1.0)
+    return masked_imgs
+
+
 def copy_random_images_per_class(source_dir, destination_dir, num_images_per_class=10):
     """
     Copies a specified number of random images per class from source directory

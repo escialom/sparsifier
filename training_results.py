@@ -12,8 +12,8 @@ from model import PhospheneOptimizer
 import config.model_config as model_config
 
 check_img = False
-plot = False
-check_params = True
+plot = True
+check_params = False
 
 if plot:
     utils.plot_losses("./output", "training_data_checkpoints.pth", "validation_data_checkpoints.pth")
@@ -57,7 +57,7 @@ if check_params:
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
                                electrode_grid=1024,
                                batch_size=args.batch_size_training)
-    for epoch in range(71):  # Replace `total_epochs` with the actual number of epochs saved
+    for epoch in range(22):  # Replace `total_epochs` with the actual number of epochs saved
         # Load model parameters for the specified epoch
         model.load_state_dict(training_data[epoch]['model_state_dict'])
 

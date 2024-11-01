@@ -28,7 +28,7 @@ def train_model(args):
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size_validation, shuffle=False)
 
     # Init class for segmenting images
-    mask_imgs = utils.MaskImgs(args)
+    mask_input_imgs = utils.MaskImgs(args)
 
     # Init model and loss
     model = PhospheneOptimizer(args=args,
@@ -96,9 +96,10 @@ def train_model(args):
             input_imgs = input_imgs.to(args.device)
             optimizer.zero_grad()
             output_imgs, _ = model(input_imgs)
-            # Mask input images to get black background for the loss calculation
-            masked_imgs, _ = mask_imgs(input_imgs)
-            losses_dict = loss_func(output_imgs, masked_imgs, model.parameters(), epoch, optimizer, mode = "train")
+            # Mask input and output images to get black background for the loss calculation
+            masked_input_imgs, mask = mask_input_imgs(input_imgs)
+            masked_output_imgs = utils.mask_imgs(output_imgs, mask)
+            losses_dict = loss_func(masked_output_imgs, masked_input_imgs, model.parameters(), epoch, optimizer, mode = "train")
             loss = sum(losses_dict.values())
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -125,7 +126,7 @@ def train_model(args):
         print(f'Epoch [{epoch}/{len(epoch_range)}], Training Loss: {epoch_loss:.5f}')
 
         # Save ongoing validation data every epoch
-        val_loss = validate_model(model, mask_imgs, val_loader, loss_func, epoch, optimizer, args.device)
+        val_loss = validate_model(model, mask_input_imgs, val_loader, loss_func, epoch, optimizer, args.device)
         val_loss_dict[epoch] = {'loss': val_loss}
         # Store the current validation state, model, and optimizer info
         validation_data[epoch] = {
@@ -220,7 +221,7 @@ def train_model(args):
     return model.state_dict()
 
 
-def validate_model(model, mask_imgs, validation_loader, loss_func, epoch, optimizer, device):
+def validate_model(model, mask_input_imgs, validation_loader, loss_func, epoch, optimizer, device):
     model.eval()
     val_losses = 0.0
     num_batches = len(validation_loader)
@@ -229,9 +230,10 @@ def validate_model(model, mask_imgs, validation_loader, loss_func, epoch, optimi
         input_imgs = input_imgs.to(device)
         with torch.no_grad():
             output_imgs, _ = model(input_imgs)
-            # Mask input images to get black background for the loss calculation
-            masked_imgs, _ = mask_imgs(input_imgs)
-            losses_dict = loss_func(output_imgs, masked_imgs, model.parameters(), epoch, optimizer, mode="eval")
+            # Mask input and output images to get black background for the loss calculation
+            masked_input_imgs, mask = mask_input_imgs(input_imgs)
+            masked_output_imgs = utils.mask_imgs(output_imgs, mask)
+            losses_dict = loss_func(masked_output_imgs, masked_input_imgs, model.parameters(), epoch, optimizer, mode="eval")
             loss = sum(losses_dict.values())
             val_losses += loss.item()
     # Get the average validation loss of current epoch
