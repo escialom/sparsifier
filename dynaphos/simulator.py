@@ -411,8 +411,15 @@ class GaussianSimulator:
         # Thresholding: Set phosphene intensity to zero if tissue activation is lower than threshold.
         supra_threshold = torch.greater(self.activation.get(), self.threshold.get())
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
+
+        # Constrain number of phosphenes in image
+        # topk_values, topk_indices = torch.topk(intensity, k=100, dim=1)
+        # result_tensor = torch.zeros_like(intensity)
+        # result_tensor.scatter_(1, topk_indices, topk_values)
+
         # Return phosphene image.
         return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1), intensity
+        # return torch.sum(result_tensor * activation, dim=self._electrode_dimension).clamp(0, 1), result_tensor
 
     @property
     def phosphene_centers(self):

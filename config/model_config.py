@@ -32,13 +32,13 @@ def parse_arguments():
     # =================================
     parser.add_argument("--train_set", type=str, default="./data/train_set")
     parser.add_argument("--val_set", type=str, default="./data/val_set")
-    parser.add_argument("--num_iter", type=int, default=10,
+    parser.add_argument("--num_iter", type=int, default=201,
                         help="number of optimization iterations")
     parser.add_argument("--lr_scheduler", type=int, default=0)
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--batch_size_training", type=int, default=5)
     parser.add_argument("--batch_size_validation", type=int, default=1)
-    parser.add_argument("--check_interval", type=int, default=2)
+    parser.add_argument("--check_interval", type=int, default=10)
     parser.add_argument("--min_val_loss_diff", type=int, default=1e-5,
                         help="Convergence criterion: minimum validation loss difference between consecutive checks.")
     parser.add_argument("--image_scale", type=int, default=224)
@@ -80,7 +80,7 @@ def parse_arguments():
     parser.add_argument("--clip_conv_layer_weights",
                         type=str, default="0,0,1.0,1.0,0")
     parser.add_argument("--clip_model_name", type=str, default="RN101")
-    parser.add_argument("--clip_fc_loss_weight", type=float, default=0.1)
+    parser.add_argument("--clip_fc_loss_weight", type=float, default=0) # 0.1 in clipasso
     parser.add_argument("--clip_text_guide", type=float, default=0)
     parser.add_argument("--text_target", type=str, default="none")
 

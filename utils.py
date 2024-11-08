@@ -111,7 +111,7 @@ def track_images(model, input_dir, output_dir, epoch=0, at_init=False):
     # Create the output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    model.eval()  # Set the model to evaluation mode
+    #model.eval()  # Set the model to evaluation mode
     with torch.no_grad():
         # Walk through the input directory
         for root, _, files in os.walk(input_dir):

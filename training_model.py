@@ -30,11 +30,12 @@ def train_model(args):
     # Init class for segmenting images
     mask_input_imgs = utils.MaskImgs(args)
 
-    # Init model and loss
+    # Init model and clipasso loss
     model = PhospheneOptimizer(args=args,
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
                                electrode_grid=1024,
                                batch_size=args.batch_size_training)
+    model.to(args.device)
     loss_func = Loss(args)
 
     # Prepare optimizer: warmup and cos decay schedule
@@ -42,7 +43,7 @@ def train_model(args):
     warm_up_epochs = 50 #50
     lr_lambda = utils.make_lr_lambda(warm_up_epochs)
     scheduler_warmup = LambdaLR(optimizer, lr_lambda=lr_lambda)
-    scheduler_cosine = CosineAnnealingLR(optimizer, T_max=args.num_iter)  # T_max is the number of epochs over which the cosine decay completes
+    scheduler_cosine = CosineAnnealingLR(optimizer, T_max=args.num_iter)
 
     # Keep track of random training and validation images
     utils.copy_random_images_per_class(source_dir=args.train_set,
@@ -95,12 +96,16 @@ def train_model(args):
             input_imgs, _ = batch
             input_imgs = input_imgs.to(args.device)
             optimizer.zero_grad()
-            output_imgs, _ = model(input_imgs)
-            # Mask input and output images to get black background for the loss calculation
+            output_imgs, stim_intensity = model(input_imgs)
+            # Mask input and output images to get black backgrounds for the clipasso loss calculation
             masked_input_imgs, mask = mask_input_imgs(input_imgs)
             masked_output_imgs = utils.mask_imgs(output_imgs, mask)
             losses_dict = loss_func(masked_output_imgs, masked_input_imgs, model.parameters(), epoch, optimizer, mode = "train")
-            loss = sum(losses_dict.values())
+            clipasso_loss = sum(losses_dict.values())
+            # Get the background activations to be penalized in the loss (model should focus on foreground)
+            background_activations = output_imgs * (1 - mask)
+            background_penalization_term = torch.mean(background_activations ** 2)
+            loss = clipasso_loss + 1*background_penalization_term
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -139,6 +144,7 @@ def train_model(args):
         # Every N epochs (defined in args.check_interval), save tracked validation image and check for early stopping
         if epoch >= 0 and epoch % args.check_interval == 0:
             # Save the optimized (tracked) validation image and register its metadata
+            model.eval()
             utils.track_images(model,
                                input_dir=os.path.join(args.output_dir, "train_img_og"),
                                output_dir=os.path.join(args.output_dir, "train_img_tracking"),
@@ -147,7 +153,6 @@ def train_model(args):
                                input_dir=os.path.join(args.output_dir, "val_img_og"),
                                output_dir=os.path.join(args.output_dir, "val_img_tracking"),
                                epoch=epoch)
-            # Put model back to training mode
             model.train()
 
             # Check if convergence criterion is met
@@ -230,11 +235,16 @@ def validate_model(model, mask_input_imgs, validation_loader, loss_func, epoch, 
         input_imgs = input_imgs.to(device)
         with torch.no_grad():
             output_imgs, _ = model(input_imgs)
-            # Mask input and output images to get black background for the loss calculation
+            # Mask input and output images to get black background for the clipasso loss calculation
             masked_input_imgs, mask = mask_input_imgs(input_imgs)
             masked_output_imgs = utils.mask_imgs(output_imgs, mask)
-            losses_dict = loss_func(masked_output_imgs, masked_input_imgs, model.parameters(), epoch, optimizer, mode="eval")
-            loss = sum(losses_dict.values())
+            losses_dict = loss_func(masked_output_imgs, masked_input_imgs, model.parameters(), epoch, optimizer,
+                                    mode="eval")
+            clipasso_loss = sum(losses_dict.values())
+            # Get the background activations to be penalized in the loss (model should focus on foreground)
+            background_activations = output_imgs * (1 - mask)
+            background_penalization_term = torch.mean(background_activations ** 2)
+            loss = clipasso_loss + 1 * background_penalization_term
             val_losses += loss.item()
     # Get the average validation loss of current epoch
     val_loss_epoch = val_losses / num_batches

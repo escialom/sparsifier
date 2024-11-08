@@ -56,15 +56,15 @@ class MiniConvNet(nn.Module):
 
         self.localization = nn.Sequential(
             nn.Conv2d(1, 64, 3, stride=1, padding=0),
-            nn.BatchNorm2d(64),
+            #nn.BatchNorm2d(64),
             nn.LeakyReLU(),
-            nn.Dropout(0.3),  # Dropout layer with 30% dropout rate
+            nn.Dropout(0.3),
             nn.Conv2d(64, 128, 3, stride=2, padding=0),
-            nn.BatchNorm2d(128),
+            #nn.BatchNorm2d(128),
             nn.LeakyReLU(),
-            nn.Dropout(0.3),  # Dropout layer with 30% dropout rate
+            nn.Dropout(0.3),
             nn.Conv2d(128, 1, 3, stride=1, padding=0),
-            nn.BatchNorm2d(1),
+            #nn.BatchNorm2d(1),
             nn.LeakyReLU()
         )
         self.conv_padding = nn.Sequential(
@@ -91,7 +91,7 @@ class PhospheneOptimizer(nn.Module):
         self.electrode_grid = electrode_grid
         self.batch_size = batch_size
         self.phosphene_coords = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(self.simulator_params, self.electrode_grid, use_seed=True)
-        self.get_learnable_params = MiniConvNet(self.args,seed=args.seed).to(args.device)
+        self.get_learnable_params = MiniConvNet(self.args, seed=args.seed).to(args.device)
         self.get_contours = InitMap(self.args)
         self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords, batch_size=self.batch_size)
 
@@ -112,11 +112,6 @@ class PhospheneOptimizer(nn.Module):
         optimized_im = optimized_im.unsqueeze(0)
         optimized_im = optimized_im.permute(1, 0, 2, 3)
         optimized_im = optimized_im.repeat(1, 3, 1, 1)
-        # detach and delete variables to save memory
-        # contours = contours.detach()
-        # del contours
-        # phosphene_placement_map = phosphene_placement_map.detach()
-        # del phosphene_placement_map
         return optimized_im, stim_intensity
 
     def normalized_rescaling(self, phosphene_placement_map, max_stimulation_intensity=1):
