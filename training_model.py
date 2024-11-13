@@ -25,7 +25,7 @@ def train_model(args):
     train_dataset = ImageFolder(root=args.train_set, transform=transforms.ToTensor())
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size_training, shuffle=True)
     val_dataset = ImageFolder(root=args.val_set, transform=transforms.ToTensor())
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size_validation, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size_validation, shuffle=True)
 
     # Init class for segmenting images
     mask_input_imgs = utils.MaskImgs(args)
@@ -91,7 +91,6 @@ def train_model(args):
     for epoch in epoch_range:
         epoch_loss = 0.0
         num_batches = len(train_loader)
-        batch_idx = 0
         for batch in train_loader:
             input_imgs, _ = batch
             input_imgs = input_imgs.to(args.device)
@@ -105,12 +104,11 @@ def train_model(args):
             # Get the background activations to be penalized in the loss (model should focus on foreground)
             background_activations = output_imgs * (1 - mask)
             background_penalization_term = torch.mean(background_activations ** 2)
-            loss = clipasso_loss + 1*background_penalization_term
+            loss = clipasso_loss + 1 * background_penalization_term
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             epoch_loss += loss.item()
-            batch_idx += 1
         epoch_loss = epoch_loss / num_batches
         epoch_loss_dict[epoch] = {'loss': epoch_loss}
 

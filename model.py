@@ -55,16 +55,11 @@ class MiniConvNet(nn.Module):
             torch.use_deterministic_algorithms(True)
 
         self.localization = nn.Sequential(
-            nn.Conv2d(1, 64, 3, stride=1, padding=0),
-            #nn.BatchNorm2d(64),
+            nn.Conv2d(1, 32, 3, stride=1, padding=0),
             nn.LeakyReLU(),
-            nn.Dropout(0.3),
-            nn.Conv2d(64, 128, 3, stride=2, padding=0),
-            #nn.BatchNorm2d(128),
+            nn.Conv2d(32, 64, 3, stride=2, padding=0),
             nn.LeakyReLU(),
-            nn.Dropout(0.3),
-            nn.Conv2d(128, 1, 3, stride=1, padding=0),
-            #nn.BatchNorm2d(1),
+            nn.Conv2d(64, 1, 3, stride=1, padding=0),
             nn.LeakyReLU()
         )
         self.conv_padding = nn.Sequential(
