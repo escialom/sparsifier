@@ -21,8 +21,16 @@ from clipasso.models.loss import Loss
 
 def train_model(args):
 
-    # Prepare dataloaders
-    train_dataset = ImageFolder(root=args.train_set, transform=transforms.ToTensor())
+    # Prepare dataloaders with augmentations
+    augmentations = transforms.Compose([transforms.ToTensor(),
+                                        transforms.RandomHorizontalFlip(0.5),
+                                        transforms.RandomVerticalFlip(0.5),
+                                        transforms.RandomRotation(degrees=(-15, 15)),
+                                        transforms.ColorJitter(brightness=0.3,
+                                                               contrast=0.3,
+                                                               saturation=0.3,
+                                                               hue=0.1)])
+    train_dataset = ImageFolder(root=args.train_set, transform=augmentations)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size_training, shuffle=True)
     val_dataset = ImageFolder(root=args.val_set, transform=transforms.ToTensor())
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size_validation, shuffle=True)
