@@ -60,11 +60,21 @@ def train_model(args):
     utils.copy_random_images_per_class(source_dir=args.val_set,
                                        destination_dir=os.path.join(args.output_dir, "val_img_og"),
                                        num_images_per_class=10)
-    utils.track_images(model,
+    tracked_train_dataset = ImageFolder(root=os.path.join(args.output_dir, "train_img_og"), transform=transforms.ToTensor())
+    tracked_train_loader = DataLoader(tracked_train_dataset, batch_size=1, shuffle=True)
+    tracked_val_dataset = ImageFolder(root=os.path.join(args.output_dir, "val_img_og"), transform=transforms.ToTensor())
+    tracked_val_loader = DataLoader(tracked_val_dataset, batch_size=1, shuffle=True)
+    utils.track_images(args,
+                       model.eval(),
+                       tracked_train_dataset,
+                       tracked_train_loader,
                        input_dir=os.path.join(args.output_dir, "train_img_og"),
                        output_dir=os.path.join(args.output_dir, "train_img_tracking"),
                        at_init=True)
-    utils.track_images(model,
+    utils.track_images(args,
+                       model.eval(),
+                       tracked_val_dataset,
+                       tracked_val_loader,
                        input_dir=os.path.join(args.output_dir, "val_img_og"),
                        output_dir=os.path.join(args.output_dir, "val_img_tracking"),
                        at_init=True)
@@ -151,11 +161,17 @@ def train_model(args):
         if epoch >= 0 and epoch % args.check_interval == 0:
             # Save the optimized (tracked) validation image and register its metadata
             model.eval()
-            utils.track_images(model,
+            utils.track_images(args,
+                               model,
+                               tracked_train_dataset,
+                               tracked_train_loader,
                                input_dir=os.path.join(args.output_dir, "train_img_og"),
                                output_dir=os.path.join(args.output_dir, "train_img_tracking"),
                                epoch=epoch)
-            utils.track_images(model,
+            utils.track_images(args,
+                               model,
+                               tracked_val_dataset,
+                               tracked_val_loader,
                                input_dir=os.path.join(args.output_dir, "val_img_og"),
                                output_dir=os.path.join(args.output_dir, "val_img_tracking"),
                                epoch=epoch)

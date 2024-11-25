@@ -87,56 +87,28 @@ def copy_random_images_per_class(source_dir, destination_dir, num_images_per_cla
                         shutil.copy(image, target_class_folder / image.name)
 
 
-def load_image(image_path):
-    """Loads an image from the given path and transforms it to a tensor."""
-    transform = transforms.Compose([
-        transforms.ToTensor(),  # Converts to tensor and normalizes to [0, 1]
-    ])
-    image = Image.open(image_path).convert('RGB')  # Ensures the image is RGB
-    return transform(image)
-
-
-def track_images(model, input_dir, output_dir, epoch=0, at_init=False):
+def track_images(args, model, dataset, dataloader, input_dir, output_dir, epoch=0, at_init=False):
     """
     Generates and saves images for each input image in the specified directory,
     preserving the folder structure and adding a prefix to the filenames.
-
-    Args:
-        model (torch.nn.Module): The trained model to generate images.
-        input_dir (str): Directory containing class subdirectories with images to process.
-        output_dir (str): Directory to save the generated images.
-        epoch (int): The current epoch number for filename prefixing.
-        at_init (bool): Flag to indicate if images are saved at initialization.
     """
-    # Create the output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
-
-    #model.eval()  # Set the model to evaluation mode
     with torch.no_grad():
-        # Walk through the input directory
-        for root, _, files in os.walk(input_dir):
-            for file_name in files:
-                if file_name.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    # Generate the full path for the input image
-                    input_image_path = os.path.join(root, file_name)
-
-                    # Load the input image
-                    input_image = load_image(input_image_path).unsqueeze(0)  # Add batch dimension
-
-                    # Generate the output image
-                    output_image, _ = model(input_image)  # Assumes model returns output
-
-                    # Determine the output directory structure
-                    relative_path = os.path.relpath(root, input_dir)
-                    output_class_dir = os.path.join(output_dir, relative_path)
-                    os.makedirs(output_class_dir, exist_ok=True)
-
-                    # Create the output file path with prefix
-                    prefix = "at_init_" if at_init else f"epoch_{epoch}_"
-                    output_file_path = os.path.join(output_class_dir, f"{prefix}{Path(file_name).stem}.png")
-
-                    # Save the output image
-                    save_image(output_image, output_file_path)
+        # Access the relative paths
+        for batch_idx, (input_imgs, _) in enumerate(dataloader):
+            # Get output image
+            input_imgs = input_imgs.to(args.device)
+            output_imgs, _ = model(input_imgs)
+            output_imgs = (output_imgs - output_imgs.min()) / (output_imgs.max() - output_imgs.min())
+            # Save output image with correct folder structure
+            absolute_path, _ = dataset.samples[batch_idx]
+            relative_path = Path(absolute_path).relative_to(input_dir)
+            output_class_dir = os.path.join(output_dir, relative_path.parent)
+            os.makedirs(output_class_dir, exist_ok=True)
+            output_prefix = "at_init_" if at_init else f"epoch_{epoch}_"
+            output_file_name = f"{output_prefix}{relative_path.stem}.png"
+            output_file_path = os.path.join(output_class_dir, output_file_name)
+            save_image(output_imgs, output_file_path)
 
 
 def save_epoch_images(model, dataloader, epoch=0, output_dir='saved_images', num_images_per_class=10, num_classes=1,
