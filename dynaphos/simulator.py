@@ -413,13 +413,13 @@ class GaussianSimulator:
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
 
         # Constrain number of phosphenes in image
-        # topk_values, topk_indices = torch.topk(intensity, k=100, dim=1)
-        # result_tensor = torch.zeros_like(intensity)
-        # result_tensor.scatter_(1, topk_indices, topk_values)
+        topk_phosphenes, topk_indices = torch.topk(intensity, k=100, dim=1)
+        topk_phos_img = torch.zeros_like(intensity)
+        topk_phos_img.scatter_(1, topk_indices, topk_phosphenes)
 
         # Return phosphene image.
-        return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1), intensity
-        # return torch.sum(result_tensor * activation, dim=self._electrode_dimension).clamp(0, 1), result_tensor
+        # return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1), intensity
+        return torch.sum(topk_phos_img * activation, dim=self._electrode_dimension).clamp(0, 1), topk_phos_img
 
     @property
     def phosphene_centers(self):
