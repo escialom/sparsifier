@@ -35,12 +35,15 @@ def parse_arguments():
     parser.add_argument("--num_iter", type=int, default=201,
                         help="number of optimization iterations")
     parser.add_argument("--lr_scheduler", type=int, default=0)
+    parser.add_argument("--warmup_duration", type=int, default=50,
+                        help="number of epochs during which lr warm up should occur")
     parser.add_argument("--lr", type=float, default=5e-6)
     parser.add_argument("--batch_size_training", type=int, default=5)
     parser.add_argument("--batch_size_validation", type=int, default=1)
     parser.add_argument("--check_interval", type=int, default=10)
     parser.add_argument("--min_val_loss_diff", type=int, default=1e-5,
                         help="Convergence criterion: minimum validation loss difference between consecutive checks.")
+    parser.add_argument("--penalization_weight", type=float, default=1.0)
     parser.add_argument("--image_scale", type=int, default=224)
 
     # =================================

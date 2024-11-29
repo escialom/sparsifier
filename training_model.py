@@ -48,46 +48,47 @@ def train_model(args):
 
     # Prepare optimizer: warmup and cos decay schedule
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    warm_up_epochs = 50 #50
-    lr_lambda = utils.make_lr_lambda(warm_up_epochs)
+    lr_lambda = utils.make_lr_lambda(args.warmup_duration)
     scheduler_warmup = LambdaLR(optimizer, lr_lambda=lr_lambda)
     scheduler_cosine = CosineAnnealingLR(optimizer, T_max=args.num_iter)
 
-    # Keep track of random training and validation images
+    # Init class for checking model convergence (early stopping criterion)
+    model_converged = utils.EarlyStopping(patience=args.check_interval,
+                                          window_size=args.check_interval,
+                                          min_delta=args.min_val_loss_diff,
+                                          verbose=True)
+
+    # Randomly select training and validation images
+    dir_train_img_og = os.path.join(args.output_dir, "train_img_og")
+    dir_val_img_og = os.path.join(args.output_dir, "val_img_og")
     utils.copy_random_images_per_class(source_dir=args.train_set,
-                                       destination_dir=os.path.join(args.output_dir, "train_img_og"),
+                                       destination_dir=dir_train_img_og,
                                        num_images_per_class=10)
     utils.copy_random_images_per_class(source_dir=args.val_set,
-                                       destination_dir=os.path.join(args.output_dir, "val_img_og"),
+                                       destination_dir=dir_val_img_og,
                                        num_images_per_class=10)
-    tracked_train_dataset = ImageFolder(root=os.path.join(args.output_dir, "train_img_og"), transform=transforms.ToTensor())
+
+    # Generate output images at model init
+    tracked_train_dataset = ImageFolder(root=dir_train_img_og, transform=transforms.ToTensor())
     tracked_train_loader = DataLoader(tracked_train_dataset, batch_size=1, shuffle=True)
-    tracked_val_dataset = ImageFolder(root=os.path.join(args.output_dir, "val_img_og"), transform=transforms.ToTensor())
-    tracked_val_loader = DataLoader(tracked_val_dataset, batch_size=1, shuffle=True)
+    tracked_val_dataset = ImageFolder(root=dir_val_img_og, transform=transforms.ToTensor())
+    tracked_val_loader = DataLoader(tracked_val_dataset, batch_size=1, shuffle=False)
     utils.track_images(args,
                        model.eval(),
                        tracked_train_dataset,
                        tracked_train_loader,
-                       input_dir=os.path.join(args.output_dir, "train_img_og"),
+                       input_dir=dir_train_img_og,
                        output_dir=os.path.join(args.output_dir, "train_img_tracking"),
                        at_init=True)
     utils.track_images(args,
                        model.eval(),
                        tracked_val_dataset,
                        tracked_val_loader,
-                       input_dir=os.path.join(args.output_dir, "val_img_og"),
+                       input_dir=dir_val_img_og,
                        output_dir=os.path.join(args.output_dir, "val_img_tracking"),
                        at_init=True)
 
-    # Prepare training loop
-    epoch_loss_dict = {}
-    training_data = {}
-    val_loss_dict = {}
-    validation_data = {}
-    prev_val_loss_checked = None
-    epoch_range = tqdm(range(args.num_iter))
-
-    # Prepare loss plot
+    # Prepare loss plots
     plt.ion()
     fig, ax = plt.subplots()
     plt.show(block=False)
@@ -96,13 +97,20 @@ def train_model(args):
     epoch_losses = []
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
-
     # Prepare learning rate plot
     fig_lr, ax_lr = plt.subplots()
     plt.show(block=False)
     learning_rates = []
     ax_lr.set_xlabel("Epoch")
     ax_lr.set_ylabel("Learning Rate")
+
+    # Prepare training loop
+    epoch_loss_dict = {}
+    training_data = {}
+    val_loss_dict = {}
+    validation_data = {}
+    prev_val_loss_checked = None
+    epoch_range = tqdm(range(args.num_iter))
 
     # Training loop
     model.train()
@@ -122,7 +130,7 @@ def train_model(args):
             # Get the background activations to be penalized in the loss (model should focus on foreground)
             background_activations = output_imgs * (1 - mask)
             background_penalization_term = torch.mean(background_activations ** 2)
-            loss = clipasso_loss + 1 * background_penalization_term
+            loss = clipasso_loss + args.penalization_weight * background_penalization_term
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
@@ -131,7 +139,7 @@ def train_model(args):
         epoch_loss_dict[epoch] = {'loss': epoch_loss}
 
         # Apply lr warmup/decay
-        if epoch < warm_up_epochs:
+        if epoch < args.warmup_duration:
             scheduler_warmup.step()
         else:
             scheduler_cosine.step()
@@ -159,20 +167,20 @@ def train_model(args):
 
         # Every N epochs (defined in args.check_interval), save tracked validation image and check for early stopping
         if epoch >= 0 and epoch % args.check_interval == 0:
-            # Save the optimized (tracked) validation image and register its metadata
+            # Save the optimized (tracked) training/validation images and register its metadata
             model.eval()
             utils.track_images(args,
                                model,
                                tracked_train_dataset,
                                tracked_train_loader,
-                               input_dir=os.path.join(args.output_dir, "train_img_og"),
+                               input_dir=dir_train_img_og,
                                output_dir=os.path.join(args.output_dir, "train_img_tracking"),
                                epoch=epoch)
             utils.track_images(args,
                                model,
                                tracked_val_dataset,
                                tracked_val_loader,
-                               input_dir=os.path.join(args.output_dir, "val_img_og"),
+                               input_dir=dir_val_img_og,
                                output_dir=os.path.join(args.output_dir, "val_img_tracking"),
                                epoch=epoch)
             model.train()

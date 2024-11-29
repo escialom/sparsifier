@@ -101,74 +101,16 @@ def track_images(args, model, dataset, dataloader, input_dir, output_dir, epoch=
             output_imgs, _ = model(input_imgs)
             output_imgs = (output_imgs - output_imgs.min()) / (output_imgs.max() - output_imgs.min())
             # Save output image with correct folder structure
-            absolute_path, _ = dataset.samples[batch_idx]
-            relative_path = Path(absolute_path).relative_to(input_dir)
-            output_class_dir = os.path.join(output_dir, relative_path.parent)
-            os.makedirs(output_class_dir, exist_ok=True)
-            output_prefix = "at_init_" if at_init else f"epoch_{epoch}_"
-            output_file_name = f"{output_prefix}{relative_path.stem}.png"
-            output_file_path = os.path.join(output_class_dir, output_file_name)
-            save_image(output_imgs, output_file_path)
-
-
-def save_epoch_images(model, dataloader, epoch=0, output_dir='saved_images', num_images_per_class=10, num_classes=1,
-                      at_init=False):
-    """
-    Saves generated images for each class during each epoch using class names from the dataloader,
-    with the original filename preserved and a prefix added.
-
-    Args:
-        model (torch.nn.Module): The trained model to generate images.
-        dataloader (torch.utils.data.DataLoader): DataLoader for the dataset.
-        epoch (int): The current epoch number.
-        output_dir (str): Directory to save the images.
-        num_images_per_class (int): Number of images to save per class.
-        num_classes (int): Number of classes in the dataset.
-        at_init (bool): Flag to indicate if images are saved at initialization.
-    """
-    # Get the class names from the dataset
-    class_to_idx = dataloader.dataset.class_to_idx
-    idx_to_class = {v: k for k, v in class_to_idx.items()}
-
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Dictionary to track the saved images per class
-    class_images = {cls: 0 for cls in range(num_classes)}
-
-    model.eval()  # Set model to evaluation mode
-    with torch.no_grad():
-        for batch_idx, (inputs, labels) in enumerate(dataloader):
-            outputs, _ = model(inputs)  # Generate images with the model
-
-            # Loop through each item in the batch
-            for i in range(len(labels)):
-                cls = labels[i].item()
-                class_name = idx_to_class[cls]  # Get class name from index
-
-                # Only save if we haven't reached the limit for this class
-                if class_images[cls] < num_images_per_class:
-                    # Get the original filename without the extension
-                    original_path = dataloader.dataset.samples[batch_idx * len(labels) + i][0]
-                    original_filename = Path(original_path).stem
-
-                    # Create the class directory based on the inherited class name
-                    class_dir = os.path.join(output_dir, class_name)
-                    os.makedirs(class_dir, exist_ok=True)
-
-                    # Set the prefixed filename
-                    prefix = f'at_init_' if at_init else f'epoch_{epoch}_'
-                    image_path = os.path.join(class_dir, f'{prefix}{original_filename}.png')
-
-                    # Save the output image
-                    save_image(outputs[i], image_path)
-
-                    # Update count for the class
-                    class_images[cls] += 1
-
-                # Stop if all classes have enough images
-                if all(count >= num_images_per_class for count in class_images.values()):
-                    return
+            for i, img in enumerate(output_imgs):
+                absolute_path, _ = dataset.samples[batch_idx * len(output_imgs) + i]
+                relative_path = Path(absolute_path).relative_to(input_dir)
+                output_class_dir = os.path.join(output_dir, relative_path.parent)
+                os.makedirs(output_class_dir, exist_ok=True)
+                output_prefix = "at_init_" if at_init else f"epoch_{epoch}_"
+                output_file_name = f"{output_prefix}{relative_path.stem}.png"
+                output_file_path = os.path.join(output_class_dir, output_file_name)
+                pil_img = Image.fromarray(img.permute(1, 2, 0).numpy())
+                pil_img.save(output_file_path)
 
 
 def get_memory_allocated(batch_idx, check_step, train_step='optimizer.step()'):
