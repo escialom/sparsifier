@@ -4,7 +4,9 @@ import shutil
 from pathlib import Path
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 from torchvision.utils import save_image
+from collections import deque
 from torchvision import transforms
 from PIL import Image
 import torch.nn.functional as F
@@ -44,6 +46,74 @@ class MaskImgs:
 
     def __call__(self, im_batch):
         return self.forward(im_batch)
+
+
+class EarlyStopping:
+    def __init__(self, patience=10, window_size=5, min_delta=1e-5, verbose=False):
+        """
+        Early stopping based on the difference between consecutive moving averages.
+        If the difference in 10 consecutive moving average val loss is smaller than min_delta (1e-5),
+        the model converges
+
+        Args:
+        - patience (int): Number of epochs to wait for improvement before stopping.
+        - window_size (int): Size of the moving average window.
+        - threshold (float): Minimum difference between consecutive moving averages to consider as improvement.
+        - verbose (bool): If True, prints updates during training.
+        """
+        self.patience = patience
+        self.window_size = window_size
+        self.min_delta = min_delta
+        self.verbose = verbose
+        self.val_losses = deque(maxlen=window_size)
+        self.last_moving_avg = None
+        self.wait = 0
+        self.stop = False
+
+    def update(self, val_loss):
+        """
+        Update the moving average and check if early stopping is triggered.
+
+        Args:
+        - val_loss (float): Current validation loss.
+
+        Returns:
+        - stop (bool): True if training should stop, False otherwise.
+        """
+
+        self.val_losses.append(val_loss)
+
+        # Compute the current average if enough values are present
+        if len(self.val_losses) < self.window_size:
+            return False
+        current_moving_avg = np.mean(self.val_losses)
+
+        # If it's the first window, initialize the current moving average
+        if self.last_moving_avg is None:
+            self.last_moving_avg = current_moving_avg
+            return False
+
+        # Check the difference between current and last moving averages
+        diff = abs(current_moving_avg - self.last_moving_avg)
+        if diff <= self.min_delta:
+            # Val loss is not significantly different from the last window check
+            self.wait += 1
+            if self.verbose:
+                print(f"Moving averages difference ({diff:.5f}) below/reached threshold for {self.wait}/{self.patience} consecutive epochs.")
+        else:
+            # Val loss significantly decreased. The model is still learning
+            self.wait = 0
+            if self.verbose:
+                print(f"Moving averages difference ({diff:.5f}) above threshold. Resetting patience.")
+        self.last_moving_avg = current_moving_avg
+
+        # Stop training if patience is exceeded
+        if self.wait >= self.patience:
+            self.stop = True
+            if self.verbose:
+                print(f"Early stopping triggered. No significant improvement for {self.patience} consecutive epochs.")
+
+        return self.stop
 
 
 def mask_imgs(imgs, masks):

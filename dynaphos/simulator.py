@@ -413,7 +413,7 @@ class GaussianSimulator:
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
 
         # Constrain number of phosphenes in image
-        topk_phosphenes, topk_indices = torch.topk(intensity, k=100, dim=1)
+        topk_phosphenes, topk_indices = torch.topk(intensity, k=200, dim=1)
         topk_phos_img = torch.zeros_like(intensity)
         topk_phos_img.scatter_(1, topk_indices, topk_phosphenes)
 
