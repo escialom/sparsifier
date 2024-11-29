@@ -100,6 +100,7 @@ def track_images(args, model, dataset, dataloader, input_dir, output_dir, epoch=
             input_imgs = input_imgs.to(args.device)
             output_imgs, _ = model(input_imgs)
             output_imgs = (output_imgs - output_imgs.min()) / (output_imgs.max() - output_imgs.min())
+            output_imgs = (output_imgs * 255).byte().cpu()
             # Save output image with correct folder structure
             for i, img in enumerate(output_imgs):
                 absolute_path, _ = dataset.samples[batch_idx * len(output_imgs) + i]
@@ -109,7 +110,7 @@ def track_images(args, model, dataset, dataloader, input_dir, output_dir, epoch=
                 output_prefix = "at_init_" if at_init else f"epoch_{epoch}_"
                 output_file_name = f"{output_prefix}{relative_path.stem}.png"
                 output_file_path = os.path.join(output_class_dir, output_file_name)
-                pil_img = Image.fromarray(img.permute(1, 2, 0).numpy())
+                pil_img = Image.fromarray(img.squeeze().permute(1, 2, 0).numpy())
                 pil_img.save(output_file_path)
 
 

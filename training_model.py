@@ -53,10 +53,10 @@ def train_model(args):
     scheduler_cosine = CosineAnnealingLR(optimizer, T_max=args.num_iter)
 
     # Init class for checking model convergence (early stopping criterion)
-    model_converged = utils.EarlyStopping(patience=args.check_interval,
-                                          window_size=args.check_interval,
-                                          min_delta=args.min_val_loss_diff,
-                                          verbose=True)
+    # model_converged = utils.EarlyStopping(patience=args.check_interval,
+    #                                       window_size=args.check_interval,
+    #                                       min_delta=args.min_val_loss_diff,
+    #                                       verbose=True)
 
     # Randomly select training and validation images
     dir_train_img_og = os.path.join(args.output_dir, "train_img_og")
@@ -144,7 +144,6 @@ def train_model(args):
         else:
             scheduler_cosine.step()
         lr = optimizer.param_groups[0]['lr']
-        print(f"Current learning rate: {lr}")
 
         # Save ongoing training data every epoch
         training_data[epoch] = {
