@@ -12,11 +12,11 @@ from model import PhospheneOptimizer
 import config.model_config as model_config
 
 check_img = False
-plot = False
+plot = True
 check_params = False
 
-training_data = torch.load("./output/training_data_checkpoints.pth", map_location=torch.device('cpu'))
-training_data[210]['epoch_loss']
+# training_data = torch.load("./output/training_data_checkpoints.pth", map_location=torch.device('cpu'))
+# training_data[210]['epoch_loss']
 
 if plot:
     utils.plot_losses("./output", "training_data_checkpoints.pth", "validation_data_checkpoints.pth")

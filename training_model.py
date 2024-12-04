@@ -70,7 +70,7 @@ def train_model(args):
 
     # Generate output images at model init
     tracked_train_dataset = ImageFolder(root=dir_train_img_og, transform=transforms.ToTensor())
-    tracked_train_loader = DataLoader(tracked_train_dataset, batch_size=1, shuffle=True)
+    tracked_train_loader = DataLoader(tracked_train_dataset, batch_size=1, shuffle=False)
     tracked_val_dataset = ImageFolder(root=dir_val_img_og, transform=transforms.ToTensor())
     tracked_val_loader = DataLoader(tracked_val_dataset, batch_size=1, shuffle=False)
     utils.track_images(args,
