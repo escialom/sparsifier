@@ -167,7 +167,7 @@ class Sigma(State):
 
 
 class GaussianSimulator:
-    def __init__(self, params: dict, coordinates: Map, batch_size: int,
+    def __init__(self, params: dict, coordinates: Map, batch_size: int, n_phos:int,
                  rng: Optional[np.random.Generator] = None, 
                  theta: Optional[np.ndarray] = None):
         """initialize a simulator with provided parameters settings,
@@ -192,6 +192,7 @@ class GaussianSimulator:
             self.generate_phosphene_maps(coordinates, theta=theta)
 
         self.batch_size = batch_size
+        self.n_phos = n_phos
         if self.batch_size != 0:
             self.shape = (self.batch_size, self.num_phosphenes, 1, 1)
             self._electrode_dimension = 1
@@ -413,7 +414,7 @@ class GaussianSimulator:
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
 
         # Constrain number of phosphenes in image
-        topk_phosphenes, topk_indices = torch.topk(intensity, k=200, dim=1)
+        topk_phosphenes, topk_indices = torch.topk(intensity, k=self.n_phos, dim=1)
         topk_phos_img = torch.zeros_like(intensity)
         topk_phos_img.scatter_(1, topk_indices, topk_phosphenes)
 

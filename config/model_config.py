@@ -29,11 +29,13 @@ def parse_arguments():
     # =================================
     # =========== training ============
     # =================================
-    parser.add_argument("--train_set", type=str, default="./data_preprocessed_white_bg/train_set")
-    parser.add_argument("--val_set", type=str, default="./data_preprocessed_white_bg/val_set")
+    parser.add_argument("--train_set", type=str, default="./data/train_set")
+    parser.add_argument("--val_set", type=str, default="./data/val_set")
     #parser.add_argument("--train_set", type=str, default="./one_sample/train_set")
     #parser.add_argument("--val_set", type=str, default="./one_sample/val_set")
-    parser.add_argument("--num_iter", type=int, default=2501,
+    parser.add_argument("--num_phos", type=int, default=200,
+                        help="number of phosphenes the optimized image should contain")
+    parser.add_argument("--num_iter", type=int, default=401,
                         help="number of optimization iterations")
     parser.add_argument("--lr_scheduler", type=int, default=0)
     parser.add_argument("--lr", type=float, default=5e-6)

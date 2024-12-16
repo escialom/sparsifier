@@ -42,7 +42,8 @@ def train_model(args):
     model = PhospheneOptimizer(args=args,
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
                                electrode_grid=1024,
-                               batch_size=args.batch_size_training)
+                               batch_size=args.batch_size_training,
+                               n_phos=args.num_phos)
     model.to(args.device)
     loss_func = Loss(args)
 
@@ -51,42 +52,6 @@ def train_model(args):
     lr_lambda = utils.make_lr_lambda(args.warmup_duration)
     scheduler_warmup = LambdaLR(optimizer, lr_lambda=lr_lambda)
     scheduler_cosine = CosineAnnealingLR(optimizer, T_max=args.num_iter)
-
-    # Init class for checking model convergence (early stopping criterion)
-    model_converged = utils.EarlyStopping(patience=args.check_interval,
-                                          window_size=args.check_interval,
-                                          min_delta=args.min_val_loss_diff,
-                                          verbose=True)
-
-    # Randomly select training and validation images
-    dir_train_img_og = os.path.join(args.output_dir, "train_img_og")
-    dir_val_img_og = os.path.join(args.output_dir, "val_img_og")
-    utils.copy_random_images_per_class(source_dir=args.train_set,
-                                       destination_dir=dir_train_img_og,
-                                       num_images_per_class=10)
-    utils.copy_random_images_per_class(source_dir=args.val_set,
-                                       destination_dir=dir_val_img_og,
-                                       num_images_per_class=10)
-
-    # Generate output images at model init
-    tracked_train_dataset = ImageFolder(root=dir_train_img_og, transform=transforms.ToTensor())
-    tracked_train_loader = DataLoader(tracked_train_dataset, batch_size=1, shuffle=False)
-    tracked_val_dataset = ImageFolder(root=dir_val_img_og, transform=transforms.ToTensor())
-    tracked_val_loader = DataLoader(tracked_val_dataset, batch_size=1, shuffle=False)
-    utils.track_images(args,
-                       model.eval(),
-                       tracked_train_dataset,
-                       tracked_train_loader,
-                       input_dir=dir_train_img_og,
-                       output_dir=os.path.join(args.output_dir, "train_img_tracking"),
-                       at_init=True)
-    utils.track_images(args,
-                       model.eval(),
-                       tracked_val_dataset,
-                       tracked_val_loader,
-                       input_dir=dir_val_img_og,
-                       output_dir=os.path.join(args.output_dir, "val_img_tracking"),
-                       at_init=True)
 
     # Prepare loss plots
     plt.ion()
@@ -109,7 +74,6 @@ def train_model(args):
     training_data = {}
     val_loss_dict = {}
     validation_data = {}
-    prev_val_loss_checked = None
     epoch_range = tqdm(range(args.num_iter))
 
     # Training loop
@@ -163,49 +127,6 @@ def train_model(args):
             'val_loss': val_loss_dict[epoch].get('loss')
         }
         print(f'Epoch [{epoch}/{len(epoch_range)}], Validation Loss: {val_loss:.5f}')
-
-        # Check if convergence criterion is met (early stopping)
-        if model_converged.update(val_loss):
-            # Save tracked images
-            model.eval()
-            utils.track_images(args,
-                               model,
-                               tracked_train_dataset,
-                               tracked_train_loader,
-                               input_dir=dir_train_img_og,
-                               output_dir=os.path.join(args.output_dir, "train_img_tracking"),
-                               epoch=epoch)
-            utils.track_images(args,
-                               model,
-                               tracked_val_dataset,
-                               tracked_val_loader,
-                               input_dir=dir_val_img_og,
-                               output_dir=os.path.join(args.output_dir, "val_img_tracking"),
-                               epoch=epoch)
-            model.train()
-            # Save model state
-            torch.save(training_data, os.path.join(args.output_dir, "training_data_at_convergence.pth"))
-            torch.save(validation_data, os.path.join(args.output_dir, "training_data_at_convergence.pth"))
-
-        # Every N epochs (defined in args.check_interval), save tracked validation image
-        if epoch >= 0 and epoch % args.check_interval == 0:
-            # Save the optimized (tracked) training/validation images and register its metadata
-            model.eval()
-            utils.track_images(args,
-                               model,
-                               tracked_train_dataset,
-                               tracked_train_loader,
-                               input_dir=dir_train_img_og,
-                               output_dir=os.path.join(args.output_dir, "train_img_tracking"),
-                               epoch=epoch)
-            utils.track_images(args,
-                               model,
-                               tracked_val_dataset,
-                               tracked_val_loader,
-                               input_dir=dir_val_img_og,
-                               output_dir=os.path.join(args.output_dir, "val_img_tracking"),
-                               epoch=epoch)
-            model.train()
 
         # Update files
         torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))

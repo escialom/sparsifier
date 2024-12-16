@@ -208,6 +208,7 @@ def plot_losses(output_dir="./output", train_filename="training_data_checkpoints
     training_data = torch.load(os.path.join(output_dir, train_filename), map_location=torch.device('cpu'))
     validation_data = torch.load(os.path.join(output_dir, val_filename), map_location=torch.device('cpu'))
     epochs = sorted(training_data.keys())  # Assuming epochs are the keys in both dictionaries
+    #epochs = epochs[0:64]
     train_losses = [training_data[epoch]['epoch_loss'] for epoch in epochs]
     val_losses = [validation_data[epoch]['val_loss'] for epoch in epochs]
     # Plotting the training and validation losses

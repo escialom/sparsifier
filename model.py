@@ -78,23 +78,25 @@ class PhospheneOptimizer(nn.Module):
     def __init__(self, args,
                  simulator_params,
                  electrode_grid,
-                 batch_size):
+                 batch_size,
+                 n_phos):
         super(PhospheneOptimizer, self).__init__()
 
         self.args = args
         self.simulator_params = simulator_params
         self.electrode_grid = electrode_grid
         self.batch_size = batch_size
+        self.n_phos = n_phos
         self.phosphene_coords = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(self.simulator_params, self.electrode_grid, use_seed=True)
         self.get_learnable_params = MiniConvNet(self.args, seed=args.seed).to(args.device)
         self.get_contours = InitMap(self.args)
-        self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords, batch_size=self.batch_size)
+        self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords, batch_size=self.batch_size, n_phos=self.n_phos)
 
     def forward(self, img_batch):
         # The first dimension of img_batch can change during the validation step.
         # If so, reinit model with correct batch size
         if self.simulator.batch_size != img_batch.shape[0]:
-            self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords, batch_size=img_batch.shape[0])
+            self.simulator = PhospheneSimulator(self.simulator_params, self.phosphene_coords, batch_size=img_batch.shape[0], n_phos=self.n_phos)
         contours = self.get_contours(img_batch, requires_grad=True)
         phosphene_placement_map = self.get_learnable_params(contours)
         # Rescale pixel intensities between [0, <max_stimulation_intensity_ampere>]
