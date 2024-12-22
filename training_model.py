@@ -43,7 +43,7 @@ def train_model(args):
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
                                electrode_grid=1024,
                                batch_size=args.batch_size_training,
-                               n_phos=args.num_phos)
+                               n_phos=args.num_phos) # TODO: Change here the number of phosphenes the model should be trained on
     model.to(args.device)
     loss_func = Loss(args)
 
