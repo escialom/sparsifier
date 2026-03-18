@@ -3,6 +3,7 @@ import collections
 import clipasso.CLIP_.clip as clip
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision import models, transforms
 
 
@@ -58,7 +59,7 @@ class Loss(nn.Module):
 
         for loss_name in self.losses_to_apply:
             if loss_name in ["clip_conv_loss"]:
-                conv_loss = self.loss_mapper[loss_name](
+                conv_loss, similarity_dict = self.loss_mapper[loss_name](
                     sketches, targets, mode)
                 for layer in conv_loss.keys():
                     losses_dict[layer] = conv_loss[layer]
@@ -74,7 +75,7 @@ class Loss(nn.Module):
             # loss = loss + losses_dict[key] * loss_coeffs[key]
             losses_dict[key] = losses_dict[key] * loss_coeffs[key]
         # print(losses_dict)
-        return losses_dict
+        return losses_dict, similarity_dict
 
 
 class CLIPLoss(torch.nn.Module):
@@ -313,13 +314,16 @@ def l1_layers(xs_conv_features, ys_conv_features, clip_model_name):
             zip(xs_conv_features, ys_conv_features)]
 
 
+# def cos_layers(xs_conv_features, ys_conv_features, clip_model_name):
+#     if "RN" in clip_model_name:
+#         return [torch.square(x_conv, y_conv, dim=1).mean() for x_conv, y_conv in
+#                 zip(xs_conv_features, ys_conv_features)]
+#     return [(1 - torch.cosine_similarity(x_conv, y_conv, dim=1)).mean() for x_conv, y_conv in
+#             zip(xs_conv_features, ys_conv_features)]
+
 def cos_layers(xs_conv_features, ys_conv_features, clip_model_name):
-    if "RN" in clip_model_name:
-        return [torch.square(x_conv, y_conv, dim=1).mean() for x_conv, y_conv in
-                zip(xs_conv_features, ys_conv_features)]
     return [(1 - torch.cosine_similarity(x_conv, y_conv, dim=1)).mean() for x_conv, y_conv in
             zip(xs_conv_features, ys_conv_features)]
-
 
 class CLIPConvLoss(torch.nn.Module):
     def __init__(self, args):
@@ -430,6 +434,12 @@ class CLIPConvLoss(torch.nn.Module):
             xs_fc_features, xs_conv_features = self.visual_encoder(xs)
             ys_fc_features, ys_conv_features = self.visual_encoder(ys)
 
+        L2_dist = {}
+        n_iter = 0
+        for x_conv, y_conv in zip(xs_conv_features, ys_conv_features):
+            L2_dist[n_iter] = torch.square(x_conv - y_conv).mean().item()
+            n_iter += 1
+
         conv_loss = self.distance_metrics[self.clip_conv_loss_type](
             xs_conv_features, ys_conv_features, self.clip_model_name)
 
@@ -444,7 +454,7 @@ class CLIPConvLoss(torch.nn.Module):
             conv_loss_dict["fc"] = fc_loss * self.clip_fc_loss_weight
 
         self.counter += 1
-        return conv_loss_dict
+        return conv_loss_dict, L2_dist
 
     def forward_inspection_clip_resnet(self, x):
         def stem(m, x):
