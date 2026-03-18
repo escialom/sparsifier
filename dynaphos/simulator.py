@@ -167,7 +167,7 @@ class Sigma(State):
 
 
 class GaussianSimulator:
-    def __init__(self, params: dict, coordinates: Map, batch_size: int, n_phos:int,
+    def __init__(self, params: dict, coordinates: Map, batch_size: int, phos_density:int,
                  rng: Optional[np.random.Generator] = None, 
                  theta: Optional[np.ndarray] = None):
         """initialize a simulator with provided parameters settings,
@@ -183,16 +183,16 @@ class GaussianSimulator:
         self.params = params
         self.data_kwargs = get_data_kwargs(self.params)
 
-        rng = np.random.default_rng() if rng is None else rng
+        self.rng = np.random.default_rng() if rng is None else rng
         set_deterministic(self.params['run']['seed'])
 
         self.deg2pix_coeff = get_deg2pix_coeff(self.params['run'])
 
         self.phosphene_maps = \
             self.generate_phosphene_maps(coordinates, theta=theta)
+        self.phos_density = phos_density
 
         self.batch_size = batch_size
-        self.n_phos = n_phos
         if self.batch_size != 0:
             self.shape = (self.batch_size, self.num_phosphenes, 1, 1)
             self._electrode_dimension = 1
@@ -210,7 +210,7 @@ class GaussianSimulator:
         self.trace = Trace(params, self.shape)
         self.sigma = Sigma(params, self.shape, self.magnification)
         self.brightness = Brightness(params, self.shape)
-        self.threshold = ActivationThreshold(params, self.shape, rng)
+        self.threshold = ActivationThreshold(params, self.shape, self.rng)
         self.effective_charge_per_second = None
 
         # Pre-allocate some helper variables.
@@ -414,12 +414,20 @@ class GaussianSimulator:
         intensity = torch.where(supra_threshold, self.brightness.get(), self._zero)
 
         # Constrain number of phosphenes in image
-        topk_phosphenes, topk_indices = torch.topk(intensity, k=self.n_phos, dim=1)
+        target_num_phos = (torch.sum(supra_threshold, dim=1) * self.phos_density) / 100
+        max_target = int(target_num_phos.max().item())
+        topk_phosphenes = torch.zeros((self.batch_size, max_target, 1, 1), dtype=intensity.dtype, device=intensity.device)
+        top_indices = torch.zeros((self.batch_size, max_target, 1, 1), dtype=torch.int64, device=intensity.device)
+        for image in range(self.batch_size):
+            k = int(target_num_phos[image].item())
+            values = intensity[image, :, 0, 0]
+            topk_values, topk_indices = torch.topk(values, k)
+            topk_phosphenes[image, :k, 0, 0] = topk_values
+            top_indices[image, :k, 0, 0] = topk_indices
         topk_phos_img = torch.zeros_like(intensity)
-        topk_phos_img.scatter_(1, topk_indices, topk_phosphenes)
+        topk_phos_img.scatter_(1, top_indices, topk_phosphenes)
 
-        # Return phosphene image.
-        # return torch.sum(intensity * activation, dim=self._electrode_dimension).clamp(0, 1), intensity
+        # Return phosphene image
         return torch.sum(topk_phos_img * activation, dim=self._electrode_dimension).clamp(0, 1), topk_phos_img
 
     @property
