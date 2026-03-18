@@ -1,9 +1,9 @@
-import argparse
 import os
 import random
+import argparse
 
-import numpy as np
 import torch
+import numpy as np
 
 def set_seed(seed):
     random.seed(seed)
@@ -19,8 +19,9 @@ def parse_arguments():
     # =================================
     # ============ general ============
     # =================================
-    parser.add_argument("--target", help="target image path")
-    parser.add_argument("--output_dir", type=str, default="output")
+    parser.add_argument("--target_path", type=str, default="./data/test_set",
+                        help="target image path")
+    parser.add_argument("--output_path", type=str, default="./output")
     parser.add_argument("--use_gpu", type=int, default=1)
     parser.add_argument("--seed", type=int, default=29)
     parser.add_argument("--mask_object", type=int, default=1)
@@ -29,37 +30,41 @@ def parse_arguments():
     # =================================
     # =========== training ============
     # =================================
-    parser.add_argument("--train_set", type=str, default="./data/train_set")
-    parser.add_argument("--val_set", type=str, default="./data/val_set")
-    #parser.add_argument("--train_set", type=str, default="./one_sample/train_set")
-    #parser.add_argument("--val_set", type=str, default="./one_sample/val_set")
-    parser.add_argument("--num_phos", type=int, default=200,
-                        help="number of phosphenes the optimized image should contain")
-    parser.add_argument("--num_iter", type=int, default=401,
+    parser.add_argument("--train_set", type=str, default="./data_preprocessed_white_bg/train_set")
+    parser.add_argument("--val_set", type=str, default="./data_preprocessed_white_bg/val_set")
+    parser.add_argument("--phos_density", type=int, default=100,
+                        help="density of phosphenes on the optimized image")
+    parser.add_argument("--num_iter", type=int, default=2001,
                         help="number of optimization iterations")
-    parser.add_argument("--lr_scheduler", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=5e-6)
-    parser.add_argument("--warmup_duration", type=int, default=50,
+    parser.add_argument("--lr_scheduler", type=bool, default=False)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--warmup_duration", type=int, default=10,
                         help="number of epochs during which lr warm up should occur")
+    parser.add_argument("--val_step", type=int, default=100,
+                        help="model is validated at each val_step")
+    parser.add_argument("--epoch_check", type=int, default=10,
+                        help="epoch interval to check for model convergence")
+    parser.add_argument("--patience", type=int, default=1,
+                        help="number of time the convergence criterion should be met")
+    parser.add_argument("--delta_val_losses", type=float, default=1e-5,
+                        help="threshold for difference between 2 validation losses")
     parser.add_argument("--batch_size_training", type=int, default=8)
     parser.add_argument("--batch_size_validation", type=int, default=8)
-    parser.add_argument("--check_interval", type=int, default=10)
-    parser.add_argument("--min_val_loss_diff", type=int, default=1e-5,
-                        help="Convergence criterion: minimum validation loss difference between consecutive epochs.")
-    parser.add_argument("--penalization_weight", type=float, default=1.0)
     parser.add_argument("--image_scale", type=int, default=224)
+    parser.add_argument("--num_img_tracked", type=int, default=2,
+                        help="number of validation images tracked during training")
 
-    # =================================
-    # ======== map init params ========
-    # =================================
-    parser.add_argument("--attention_init", type=int, default=1,
-                        help="if True, use the attention heads of Dino model to set the location of the initial strokes")
-    parser.add_argument("--saliency_model", type=str, default="clip")
-    parser.add_argument("--saliency_clip_model", type=str, default="ViT-B/32")
-    parser.add_argument("--xdog_intersec", type=int, default=1)
-    parser.add_argument("--init_mode", type=str, default="contours")
-    parser.add_argument("--mask_object_attention", type=int, default=0)
-    parser.add_argument("--softmax_temp", type=float, default=0.3)
+    # =====================================
+    # ======== contours extraction ========
+    # =====================================
+    parser.add_argument("--sigma_kernel", type=float, default=2,
+                        help="Size of sigma kernel for contours extraction")
+    parser.add_argument("--lambda_kernel", type=float, default=4,
+                        help="Size of lambda kernel for contours extraction")
+    parser.add_argument("--padding_pix", type=int, default=3)
+    parser.add_argument("--padding_color", type=int, default=1)
+    parser.add_argument("--n_orientations", type=int, default=8,
+                        help="Number of orientations to extract for contours")
 
     # =================================
     # ============= loss ==============
@@ -86,9 +91,10 @@ def parse_arguments():
     parser.add_argument("--clip_conv_layer_weights",
                         type=str, default="0,0,1.0,1.0,0")
     parser.add_argument("--clip_model_name", type=str, default="RN101")
-    parser.add_argument("--clip_fc_loss_weight", type=float, default=0) # clipasso 0.1
+    parser.add_argument("--clip_fc_loss_weight", type=float, default=0.1)
     parser.add_argument("--clip_text_guide", type=float, default=0)
     parser.add_argument("--text_target", type=str, default="none")
+    parser.add_argument("--penalization_weight", type=float, default=1.0)
 
     args = parser.parse_args()
     set_seed(args.seed)
@@ -96,8 +102,8 @@ def parse_arguments():
     args.clip_conv_layer_weights = [
         float(item) for item in args.clip_conv_layer_weights.split(',')]
 
-    if not os.path.exists(args.output_dir):
-        os.mkdir(args.output_dir)
+    if not os.path.exists(args.output_path):
+        os.mkdir(args.output_path)
 
     if args.use_gpu:
         args.device = torch.device("cuda" if (
@@ -111,4 +117,4 @@ if __name__ == "__main__":
     # for cog predict
     args = parse_arguments()
     final_config = vars(args)
-    np.save(f"{args.output_dir}/config_init.npy", final_config)
+    np.save(f"{args.output_path}/config_init.npy", final_config)
