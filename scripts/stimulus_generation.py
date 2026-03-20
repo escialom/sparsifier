@@ -86,20 +86,34 @@ StimulusRenderer = StimulusRendering(args,
 
 # Load Saving class
 save_stimuli = SavingStimuli(args.output_path)
-
+save_raw_contours = SavingStimuli(Path(args.output_path) / "raw_contours")
+save_raw_luminance = SavingStimuli(Path(args.output_path) / "raw_luminance")
 
 # Stimulus generation loop
 for batch_idx, (batch, _) in enumerate(loader):
     for img_idx, input_img in enumerate(batch):
         input_img = input_img.unsqueeze(0)
+        # Get the relative path to the input file
+        relative_path, _ = loader.dataset.samples[batch_idx * len(batch) + img_idx]
+        relative_path = Path(relative_path)
         # Get DNN stimuli
         phos_DNN, n_elecs_DNN, DNN_map = StimulusRenderer.get_optimized_stimuli(input_img)
         # Get contours stimuli
         contours = StimulusRenderer.get_contours(input_img)
         phos_contours, n_elecs_cont, cont_map = StimulusRenderer.phosphenize(contours)
+        # Save contours
+        contour_output_dir = save_raw_contours.get_relative_output_dir(relative_path.parent, dataset)
+        save_raw_contours.save_stimuli(contours.squeeze(),
+                                       output_filename=f"{relative_path.stem}_contours_raw.png",
+                                       output_img_dir=contour_output_dir)
         # Get luminance stimuli
         gray_img = StimulusRenderer.get_luminance(input_img)
         phos_lum, n_elecs_lum, lum_map = StimulusRenderer.phosphenize(gray_img)
+        # Save luminance
+        luminance_output_dir = save_raw_luminance.get_relative_output_dir(relative_path.parent, dataset)
+        save_raw_luminance.save_stimuli(gray_img.squeeze(),
+                                        output_filename=f"{relative_path.stem}_luminance_raw.png",
+                                        output_img_dir=luminance_output_dir)
         # Create dict of stimuli
         stimulus_dict = {"DNN": {"num_elecs": n_elecs_DNN,
                                  "phos_img": phos_DNN,
@@ -128,9 +142,6 @@ for batch_idx, (batch, _) in enumerate(loader):
         img_phos_two, num_elecs_two, _ = StimulusRenderer.phosphenize(reduced_map_two, reset_thresholds=True)
         print(num_elecs_one, target_num_elecs)
         print(num_elecs_two, target_num_elecs)
-        # Get the relative path to the input file
-        relative_path, _ = loader.dataset.samples[batch_idx * len(batch) + img_idx]
-        relative_path = Path(relative_path)
         # Creates csv file with number of phosphenes
         save_stimuli.save_num_phos(relative_path, args.phos_density, target_num_elecs)
         output_img_dir = save_stimuli.get_relative_output_dir(relative_path.parent, dataset)
