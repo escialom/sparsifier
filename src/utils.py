@@ -4,8 +4,6 @@ import shutil
 from pathlib import Path
 import os
 import matplotlib.pyplot as plt
-import numpy as np
-from collections import deque
 from torchvision import transforms
 from PIL import Image
 import torch.nn.functional as F
@@ -46,7 +44,7 @@ class MaskImgs:
     # From CLIPASSO - Vinker et al.(2022)
     def __init__(self, args):
         self.device = args.device
-        model_dir = os.path.join("./clipasso/U2Net_/saved_models/u2net.pth")
+        model_dir = os.path.join("../clipasso/U2Net_/saved_models/u2net.pth")
         self.net = U2NET(3, 1)
         self.net.load_state_dict(torch.load(model_dir, map_location=self.device, weights_only=True))
         self.net.to(self.device).eval()

@@ -46,11 +46,11 @@ from pathlib import Path
 
 import dynaphos
 import config.model_config as model_config
-from model import PhospheneOptimizer
+from src.model import PhospheneOptimizer
 
-from StimGen import DataLoading
-from StimGen import StimulusRendering
-from StimGen import SavingStimuli
+from src.StimGen import DataLoading
+from src.StimGen import StimulusRendering
+from src.StimGen import SavingStimuli
 
 
 # Load arguments and get dataloader

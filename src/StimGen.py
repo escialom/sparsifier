@@ -9,7 +9,7 @@ from torchvision import transforms
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
 
-import utils
+from src import utils
 from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
 
 

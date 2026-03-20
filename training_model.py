@@ -12,9 +12,9 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 import dynaphos
-import utils
+from src import utils
 from config import model_config
-from model import PhospheneOptimizer
+from src.model import PhospheneOptimizer
 from clipasso.models.loss import Loss
 
 
