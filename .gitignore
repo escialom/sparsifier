@@ -5,6 +5,7 @@ clips/
 **[Aa]rchived
 .idea/
 /clipasso/U2Net_/saved_models/u2net.pth
+/clipasso/CLIP_/Thumbs.db
 /dist/
 /dynaphos.egg-info/
 *.mp4
