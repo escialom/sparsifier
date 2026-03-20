@@ -5,7 +5,6 @@ from pathlib import Path
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-from torchvision.utils import save_image
 from collections import deque
 from torchvision import transforms
 from PIL import Image
@@ -14,6 +13,37 @@ from clipasso.U2Net_.model import U2NET
 
 
 class MaskImgs:
+    """
+    Apply Clipasso-style foreground masking to a batch of images using U2-Net.
+
+    This class loads the pre-trained U2-Net model used in the Clipasso pipeline
+    (Vinker et al., 2022) and uses it to compute saliency-based foreground masks.
+    For each input batch, the predicted mask is thresholded to obtain a binary
+    segmentation mask, which is then applied to the images to suppress the
+    background.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Configuration object containing runtime arguments. Must include:
+        - device: computation device on which the U²-Net model is loaded.
+
+    Attributes
+    ----------
+    device : str or torch.device
+        Device used for inference.
+    net : U2NET
+        Pre-trained U2-Net model used for saliency prediction.
+    data_transforms : torchvision.transforms.Compose
+        Normalization transform applied before passing images to U2-Net.
+
+    Notes
+    -----
+    This implementation follows the masking procedure used in Clipasso, where
+    U2-Net is used to extract salient foreground regions from images.
+    """
+
+    # From CLIPASSO - Vinker et al.(2022)
     def __init__(self, args):
         self.device = args.device
         model_dir = os.path.join("./clipasso/U2Net_/saved_models/u2net.pth")
@@ -26,6 +56,28 @@ class MaskImgs:
         ])
 
     def forward(self, im_batch):
+
+        """
+        Generate binary foreground masks and apply them to an image batch.
+
+        The input batch is first normalized, then passed through U2-Net to obtain
+        a saliency prediction. The prediction is normalized and thresholded at 0.5
+        to produce a binary mask. This mask is resized to match the input spatial
+        dimensions, expanded to 3 channels for RGB images, and applied to the
+        batch to suppress the background.
+
+        Parameters
+        ----------
+        im_batch : torch.Tensor
+            Batch of input images with shape (N, C, H, W).
+
+        Returns
+        -------
+        masked_images : torch.Tensor
+            Batch of masked images with the background set to zero.
+        mask : torch.Tensor
+            Binary foreground mask with 3 channels, matching the image shape.
+        """
 
         im_batch = self.data_transforms(im_batch).to(self.device)
         with torch.no_grad():
@@ -48,75 +100,25 @@ class MaskImgs:
         return self.forward(im_batch)
 
 
-class EarlyStopping:
-    def __init__(self, patience=10, window_size=5, min_delta=1e-5, verbose=False):
-        """
-        Early stopping based on the difference between consecutive moving averages.
-        If the difference in 10 consecutive moving average val loss is smaller than min_delta (1e-5),
-        the model converges
-
-        Args:
-        - patience (int): Number of epochs to wait for improvement before stopping.
-        - window_size (int): Size of the moving average window.
-        - threshold (float): Minimum difference between consecutive moving averages to consider as improvement.
-        - verbose (bool): If True, prints updates during training.
-        """
-        self.patience = patience
-        self.window_size = window_size
-        self.min_delta = min_delta
-        self.verbose = verbose
-        self.val_losses = deque(maxlen=window_size)
-        self.last_moving_avg = None
-        self.wait = 0
-        self.stop = False
-
-    def update(self, val_loss):
-        """
-        Update the moving average and check if early stopping is triggered.
-
-        Args:
-        - val_loss (float): Current validation loss.
-
-        Returns:
-        - stop (bool): True if training should stop, False otherwise.
-        """
-
-        self.val_losses.append(val_loss)
-
-        # Compute the current average if enough values are present
-        if len(self.val_losses) < self.window_size:
-            return False
-        current_moving_avg = np.mean(self.val_losses)
-
-        # If it's the first window, initialize the current moving average
-        if self.last_moving_avg is None:
-            self.last_moving_avg = current_moving_avg
-            return False
-
-        # Check the difference between current and last moving averages
-        diff = abs(current_moving_avg - self.last_moving_avg)
-        if diff <= self.min_delta:
-            # Val loss is not significantly different from the last window check
-            self.wait += 1
-            if self.verbose:
-                print(f"Moving averages difference ({diff:.5f}) below/reached threshold for {self.wait}/{self.patience} consecutive epochs.")
-        else:
-            # Val loss significantly decreased. The model is still learning
-            self.wait = 0
-            if self.verbose:
-                print(f"Moving averages difference ({diff:.5f}) above threshold. Resetting patience.")
-        self.last_moving_avg = current_moving_avg
-
-        # Stop training if patience is exceeded
-        if self.wait >= self.patience:
-            self.stop = True
-            if self.verbose:
-                print(f"Early stopping triggered. No significant improvement for {self.patience} consecutive epochs.")
-
-        return self.stop
-
-
 def mask_imgs(imgs, masks):
+
+    """
+    Apply precomputed masks to a batch of images.
+
+    Parameters
+    ----------
+    imgs : torch.Tensor
+       Batch of input images.
+    masks : torch.Tensor
+       Batch of masks with the same shape as `imgs` or broadcast-compatible shape.
+
+    Returns
+    -------
+    masked_imgs : torch.Tensor
+       Masked images with background pixels set to zero and values clamped to
+       the range [0, 1].
+    """
+
     masked_imgs = masks * imgs
     masked_imgs[masks == 0] = 0
     masked_imgs = torch.clamp(masked_imgs, min=0.0, max=1.0)
@@ -125,15 +127,29 @@ def mask_imgs(imgs, masks):
 
 def copy_random_images_per_class(source_dir, destination_dir, num_images_per_class=10):
     """
-    Copies a specified number of random images per class from source directory
-    (structured as source_dir/sub_dir/class_folder) to a target directory,
-    preserving the class folder structure.
+    Copy a fixed number of random images per class while preserving folder structure.
 
-    Args:
-        source_dir (str): Root directory containing subdirectories with class folders.
-        target_dir (str): Destination directory to copy images to, preserving structure.
-        num_images (int): Number of random images to copy per class.
+    This function assumes the source directory is structured as:
+        source_dir / sub_dir / class_folder / image_file
+
+    For each class folder, up to "num_images_per_class" images are selected at
+    random and copied to the destination directory while preserving the same
+    "sub_dir/class_folder" hierarchy.
+
+    Parameters
+    ----------
+    source_dir : str or Path
+        Root directory containing subdirectories with class folders.
+    destination_dir : str or Path
+        Destination directory where the selected images will be copied.
+    num_images_per_class : int, optional
+        Number of random images to copy from each class folder. Default is 10.
+
+    Returns
+    -------
+    None
     """
+
     # Create the target directory if it does not exist
     os.makedirs(destination_dir, exist_ok=True)
 
@@ -158,10 +174,41 @@ def copy_random_images_per_class(source_dir, destination_dir, num_images_per_cla
 
 
 def track_images(args, model, dataset, dataloader, input_dir, output_dir, epoch=0, at_init=False):
+
     """
-    Generates and saves images for each input image in the specified directory,
-    preserving the folder structure and adding a prefix to the filenames.
+    Run a model on a dataset and save the output images while preserving folder structure. Used to track
+    progress during training.
+
+    For each input image in the dataloader, the corresponding model output is
+    generated, normalized to the range [0, 255], converted to an image, and
+    saved under "output_dir" using the same relative path as in "input_dir".
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Configuration object containing runtime arguments. Must include `device`.
+    model : torch.nn.Module
+        Model used to generate output images.
+    dataset : torchvision.datasets.ImageFolder or compatible dataset
+        Dataset containing the original file paths in `dataset.samples`.
+    dataloader : torch.utils.data.DataLoader
+        Dataloader providing input images to the model.
+    input_dir : str or Path
+        Root directory of the input dataset.
+    output_dir : str or Path
+        Root directory where model outputs are saved.
+    epoch : int, optional
+        Current training epoch or step, used in the output filename prefix.
+        Default is 0.
+    at_init : bool, optional
+        If True, saved filenames are prefixed with `at_init_`; otherwise they
+        are prefixed with `step_{epoch}_`. Default is False.
+
+    Returns
+    -------
+    None
     """
+
     os.makedirs(output_dir, exist_ok=True)
     with torch.no_grad():
         # Access the relative paths
@@ -177,7 +224,7 @@ def track_images(args, model, dataset, dataloader, input_dir, output_dir, epoch=
                 relative_path = Path(absolute_path).relative_to(input_dir)
                 output_class_dir = os.path.join(output_dir, relative_path.parent)
                 os.makedirs(output_class_dir, exist_ok=True)
-                output_prefix = "at_init_" if at_init else f"epoch_{epoch}_"
+                output_prefix = "at_init_" if at_init else f"step_{epoch}_"
                 output_file_name = f"{output_prefix}{relative_path.stem}.png"
                 output_file_path = os.path.join(output_class_dir, output_file_name)
                 pil_img = Image.fromarray(img.squeeze().permute(1, 2, 0).numpy())
@@ -185,11 +232,55 @@ def track_images(args, model, dataset, dataloader, input_dir, output_dir, epoch=
 
 
 def get_memory_allocated(batch_idx, check_step, train_step='optimizer.step()'):
+
+    """
+    Print the currently allocated CUDA memory at a specified batch interval.
+
+    Parameters
+    ----------
+    batch_idx : int
+        Index of the current batch.
+    check_step : int
+        Interval at which memory usage is printed.
+    train_step : str, optional
+        Label describing the training stage at which memory is checked.
+        Default is `'optimizer.step()'`.
+
+    Returns
+    -------
+    None
+    """
+
     if batch_idx % check_step == 0:
         print(f"Batch {batch_idx}, Memory allocated after {train_step}: {torch.cuda.memory_allocated()} bytes")
 
 
 def get_layer_gradients(model, epoch, batch_idx, check_step, get_mean_grad=False):
+    """
+    Print gradient norms of model parameters at a specified batch interval.
+
+    This function is useful for debugging vanishing or exploding gradients during
+    training. It optionally also prints the mean gradient norm across all layers.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        Model whose parameter gradients are inspected.
+    epoch : int
+        Current epoch number.
+    batch_idx : int
+        Current batch index.
+    check_step : int
+        Interval at which gradient norms are printed.
+    get_mean_grad : bool, optional
+        If True, also compute and print the average gradient norm across all
+        parameters with gradients. Default is False.
+
+    Returns
+    -------
+    None
+    """
+
     if batch_idx % check_step == 0:
         # Get gradients of each layer
         for i, param in enumerate(model.parameters()):
@@ -204,11 +295,29 @@ def get_layer_gradients(model, epoch, batch_idx, check_step, get_mean_grad=False
 
 
 def plot_losses(output_dir="./output", train_filename="training_data_checkpoints.pth", val_filename="validation_data_checkpoints.pth"):
+    """
+    Plot training and validation loss curves from saved checkpoint files.
+
+    Parameters
+    ----------
+    output_dir : str or Path, optional
+        Directory containing the checkpoint files. Default is `"./output"`.
+    train_filename : str, optional
+        Filename of the saved training checkpoint dictionary. Default is
+        `"training_data_checkpoints.pth"`.
+    val_filename : str, optional
+        Filename of the saved validation checkpoint dictionary. Default is
+        `"validation_data_checkpoints.pth"`.
+
+    Returns
+    -------
+    None
+    """
+
     # Load the saved training and validation data and map to CPU if needed
     training_data = torch.load(os.path.join(output_dir, train_filename), map_location=torch.device('cpu'))
     validation_data = torch.load(os.path.join(output_dir, val_filename), map_location=torch.device('cpu'))
     epochs = sorted(training_data.keys())  # Assuming epochs are the keys in both dictionaries
-    #epochs = epochs[0:64]
     train_losses = [training_data[epoch]['epoch_loss'] for epoch in epochs]
     val_losses = [validation_data[epoch]['val_loss'] for epoch in epochs]
     # Plotting the training and validation losses
@@ -220,10 +329,28 @@ def plot_losses(output_dir="./output", train_filename="training_data_checkpoints
     plt.title('Training and Validation Loss Over Epochs')
     plt.legend()
     plt.grid(True)
+    plt.savefig(f"{output_dir}/train_val_losses.png", dpi=300, bbox_inches='tight')
     plt.show()
 
 
 def plot_stim_properties(output_dir="./output", filename="data_tracked_validation_img.pth"):
+
+    """
+    Plot stimulation intensity and number of phosphenes over epochs for a tracked image.
+
+    Parameters
+    ----------
+    output_dir : str or Path, optional
+        Directory containing the saved metadata file. Default is `"./output"`.
+    filename : str, optional
+        Name of the file containing tracked validation image properties.
+        Default is `"data_tracked_validation_img.pth"`.
+
+    Returns
+    -------
+    None
+    """
+
     data_tracked_val_img = torch.load(os.path.join(output_dir, filename), map_location=torch.device('cpu'))
     epochs = sorted(data_tracked_val_img.keys())
     stim_intensity = [data_tracked_val_img[epoch]['stim_intensity'] for epoch in epochs]
@@ -251,6 +378,26 @@ def plot_stim_properties(output_dir="./output", filename="data_tracked_validatio
 
 
 def val_img_properties(output_dir="./output", img_metadata_file="val_img_metadata.pth"):
+
+    """
+    Plot stimulation intensity and number of phosphenes for validation images.
+
+    This function loads saved metadata for validation images after training and
+    visualizes the stimulation intensity and number of phosphenes for each image.
+
+    Parameters
+    ----------
+    output_dir : str or Path, optional
+        Directory containing the metadata file. Default is `"./output"`.
+    img_metadata_file : str, optional
+        Filename of the validation image metadata file. Default is
+        `"val_img_metadata.pth"`.
+
+    Returns
+    -------
+    None
+    """
+
     img_metadata_path = os.path.join(output_dir, img_metadata_file)
     val_img_after_training = torch.load(img_metadata_path, map_location=torch.device('cpu'))
     img_indices = sorted(val_img_after_training.keys())
@@ -277,6 +424,20 @@ def val_img_properties(output_dir="./output", img_metadata_file="val_img_metadat
 
 
 def plot_optimized_img(output_imgs):
+
+    """
+    Display a model output image after normalization.
+
+    Parameters
+    ----------
+    output_imgs : torch.Tensor
+        Output tensor containing a single image or a batch with one image.
+
+    Returns
+    -------
+    None
+    """
+
     out = output_imgs.squeeze(0)
     out = out.permute(1, 2, 0)
     numpy_img = out.numpy()
@@ -286,7 +447,31 @@ def plot_optimized_img(output_imgs):
     plt.show()
 
 
-def save_images(output_imgs, save_prefix, input_filename, epoch_idx, at_init=False):
+def save_images(output_imgs, save_prefix, input_filename, at_init=False):
+    """
+    Save one or more output images to disk.
+
+    Each image is normalized to the range [0, 1] before saving. Filenames are
+    generated from `input_filename` and indicate whether the image corresponds
+    to the model initialization or a later output.
+
+    Parameters
+    ----------
+    output_imgs : torch.Tensor
+        Batch of output images with shape (N, C, H, W).
+    save_prefix : str or Path
+        Directory where the images are saved.
+    input_filename : str
+        Base filename used to construct the output filename.
+    at_init : bool, optional
+        If True, append `_phos_model_init.png`; otherwise append `_phos.png`.
+        Default is False.
+
+    Returns
+    -------
+    None
+    """
+
     for i in range(output_imgs.shape[0]):
         img = output_imgs[i]
         img_np = img.detach().permute(1, 2, 0).cpu().numpy()
@@ -294,18 +479,72 @@ def save_images(output_imgs, save_prefix, input_filename, epoch_idx, at_init=Fal
         if at_init:
             filename_output = f"{input_filename}_phos_model_init.png"
         else:
-            filename_output = f"{input_filename}_phos_{epoch_idx}_{i}.png"
+            filename_output = f"{input_filename}_phos.png"
         plt.imsave(os.path.join(save_prefix, filename_output), img_np)
 
 
 def create_dir(output_dir, epoch):
-    epoch_path_dir = os.path.join(output_dir, f"epoch_{epoch}")
+    """
+    Create and return an output directory for a given epoch or step.
+
+    Parameters
+    ----------
+    output_dir : str or Path
+        Root output directory.
+    epoch : int
+        Epoch or step number used in the folder name.
+
+    Returns
+    -------
+    str
+        Path to the created directory of the form `output_dir/step_{epoch}`.
+    """
+    epoch_path_dir = os.path.join(output_dir, f"step_{epoch}")
     if not os.path.exists(epoch_path_dir):
         os.mkdir(epoch_path_dir)
     return epoch_path_dir
 
 
 def save_tracked_img(output_dir, tracked_img_input, tracked_img_output, stimulation_intensity, dict_metadata, val_dataset, tracked_img_idx, input_folder, epoch, at_init=False):
+    """
+    Save the output corresponding to a tracked validation image.
+
+    This function creates an epoch-specific output directory, reconstructs the
+    relative path of the tracked image within the validation dataset, and saves
+    the corresponding model output while preserving the original folder structure.
+
+    Parameters
+    ----------
+    output_dir : str or Path
+       Root directory where tracked images are saved.
+    tracked_img_input : torch.Tensor
+       Input image tensor for the tracked validation image.
+    tracked_img_output : torch.Tensor
+       Output image tensor produced by the model.
+    stimulation_intensity : torch.Tensor
+       Stimulation intensity map associated with the tracked image.
+    dict_metadata : dict
+       Dictionary intended to store metadata for the tracked image.
+    val_dataset : torch.utils.data.DataLoader or dataset
+       Validation dataloader or dataset containing `samples`.
+    tracked_img_idx : int
+       Index of the tracked image in the dataset.
+    input_folder : str or Path
+       Root directory of the validation dataset.
+    epoch : int
+       Current epoch or step number.
+    at_init : bool, optional
+       Whether the saved image corresponds to initialization. Default is False.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    Metadata saving is currently commented out in the implementation.
+    """
+
     if isinstance(val_dataset, torch.utils.data.DataLoader):
         val_dataset = val_dataset.dataset
     epoch_path_dir = create_dir(output_dir, epoch)
@@ -314,30 +553,58 @@ def save_tracked_img(output_dir, tracked_img_input, tracked_img_output, stimulat
     input_filename = os.path.splitext(os.path.basename(relative_path))[0]
     output_img_dir = os.path.join(epoch_path_dir, os.path.dirname(relative_path))
     os.makedirs(output_img_dir, exist_ok=True)
-    save_images(tracked_img_output, output_img_dir, input_filename, epoch, at_init)
-    dict_metadata[epoch] = {
-        'input_img': tracked_img_input,
-        'output_img': tracked_img_output,
-        'stim_intensity': torch.sum(stimulation_intensity).item(),
-        'number_phosphenes': torch.sum(stimulation_intensity > 0).item()
-    }
-    return dict_metadata
+    save_images(tracked_img_output, output_img_dir, input_filename, at_init)
+    # dict_metadata[epoch] = {
+    #     'input_img': tracked_img_input,
+    #     'output_img': tracked_img_output,
+    #     'stim_intensity': torch.sum(stimulation_intensity).item(),
+    #     'number_phosphenes': torch.sum(stimulation_intensity > 0).item()
+    # }
+    # return dict_metadata
 
 
-def track_val_imgs(args, n_img_tracked, dataloader, model, data_tracked_val_imgs, device='cpu', seed=None):
+def track_val_imgs(args,
+                   n_img_tracked,
+                   dataloader,
+                   model,
+                   data_tracked_val_imgs,
+                   n_steps,
+                   device='cpu',
+                   seed=None):
+
     """
-    Track a specified number of validation images during training.
+    Randomly select and save a subset of validation images for qualitative tracking.
 
-    Args:
-        n_img_tracked (int): Number of validation images to track.
-        dataloader (DataLoader): DataLoader for the validation dataset.
-        model (torch.nn.Module): The neural network model.
-        device (str): Device to perform computations on ('cpu' or 'cuda').
-        seed (int, optional): Seed for reproducibility of random image selection.
+    This function samples a fixed number of validation images, runs them through
+    the model in evaluation mode, and saves the corresponding outputs for later
+    inspection across training steps.
 
-    Returns:
-        dict: Dictionary containing tracked image data.
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Configuration object. Must include:
+        - output_path: directory where tracked outputs are saved
+        - val_set: path to the validation dataset
+    n_img_tracked : int
+        Number of validation images to track.
+    dataloader : torch.utils.data.DataLoader
+        Dataloader for the validation dataset.
+    model : torch.nn.Module
+        Model used to generate validation outputs.
+    data_tracked_val_imgs : dict
+        Dictionary used to organize tracked image metadata.
+    n_steps : int
+        Current training step or epoch number.
+    device : str, optional
+        Device on which the tracked images are evaluated. Default is `'cpu'`.
+    seed : int, optional
+        Random seed for reproducible image selection. Default is None.
+
+    Returns
+    -------
+    None
     """
+
     # Set random seed for reproducibility if provided
     if seed is not None:
         random.seed(seed)
@@ -357,21 +624,32 @@ def track_val_imgs(args, n_img_tracked, dataloader, model, data_tracked_val_imgs
     model.eval()
     with torch.no_grad():
         for idx, tracked_img in tracked_imgs:
-            tracked_output_img, intensity = model(tracked_img)
-            data_tracked_val_imgs[idx] = save_tracked_img(args.output_dir,
-                                                          tracked_img,
-                                                          tracked_output_img,
-                                                          intensity,
-                                                          data_tracked_val_imgs[idx],
-                                                          dataloader,
-                                                          idx,
-                                                          input_folder=args.val_set,
-                                                          epoch=0,
-                                                          at_init=True)
+            tracked_output_img, intensity, _ = model(tracked_img)
+            # data_tracked_val_imgs[idx] = save_tracked_img(args.output_dir,
+            #                                               tracked_img,
+            #                                               tracked_output_img,
+            #                                               intensity,
+            #                                               data_tracked_val_imgs[idx],
+            #                                               dataloader,
+            #                                               idx,
+            #                                               input_folder=args.val_set,
+            #                                               epoch=n_steps,
+            #                                               at_init=True)
+            save_tracked_img(args.output_path,
+                              tracked_img,
+                              tracked_output_img,
+                              intensity,
+                              data_tracked_val_imgs[idx],
+                              dataloader,
+                              idx,
+                              input_folder=args.val_set,
+                              epoch=n_steps,
+                              at_init=True)
 
-    return data_tracked_val_imgs, tracked_imgs
+    # return data_tracked_val_imgs, tracked_imgs
 
 
+# From Dynaphos
 def normalized_rescaling(phosphene_placement_map, max_stimulation_intensity=1):
     """Normalize <img> and rescale the pixel intensities in the range [0, <stimulus_scale>].
     <stimulus_scale> is defined in the parameter file.
@@ -383,6 +661,23 @@ def normalized_rescaling(phosphene_placement_map, max_stimulation_intensity=1):
 
 
 def make_lr_lambda(warm_up_epochs):
+    """
+    Create a learning-rate schedule function for linear warmup.
+
+    The returned function scales the learning rate linearly from
+    `1 / warm_up_epochs` to `1.0` over the first `warm_up_epochs` epochs,
+    and keeps it constant at `1.0` thereafter.
+
+    Parameters
+    ----------
+    warm_up_epochs : int
+        Number of warmup epochs.
+
+    Returns
+    -------
+    callable
+        Function mapping the epoch index to a learning-rate multiplier.
+    """
     def lr_lambda(epoch):
         if epoch < warm_up_epochs:
             return float(epoch + 1) / float(warm_up_epochs)
