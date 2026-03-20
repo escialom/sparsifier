@@ -5,7 +5,7 @@ from torchvision import transforms
 
 import dynaphos
 from dynaphos.simulator import GaussianSimulator as PhospheneSimulator
-from ContourExtract import ContourExtract
+from src.ContourExtract import ContourExtract
 
 
 class MiniConvNet(nn.Module):
