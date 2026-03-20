@@ -1,4 +1,3 @@
-import copy
 import os
 import sys
 import torch
@@ -43,15 +42,17 @@ def train_model(args):
                                simulator_params=dynaphos.utils.load_params("./config/config_dynaphos/params.yaml"),
                                electrode_grid=1024,
                                batch_size=args.batch_size_training,
-                               n_phos=args.num_phos) # TODO: Change here the number of phosphenes the model should be trained on
+                               phos_density=args.phos_density)
     model.to(args.device)
     loss_func = Loss(args)
+    best_loss = float("inf")
 
-    # Prepare optimizer: warmup and cos decay schedule
+    # Prepare optimizer, warmup and cos decay schedule
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     lr_lambda = utils.make_lr_lambda(args.warmup_duration)
     scheduler_warmup = LambdaLR(optimizer, lr_lambda=lr_lambda)
-    scheduler_cosine = CosineAnnealingLR(optimizer, T_max=args.num_iter)
+    if args.lr_scheduler:
+        scheduler_cosine = CosineAnnealingLR(optimizer, T_max=args.num_iter)
 
     # Prepare loss plots
     plt.ion()
@@ -68,6 +69,14 @@ def train_model(args):
     learning_rates = []
     ax_lr.set_xlabel("Epoch")
     ax_lr.set_ylabel("Learning Rate")
+    # Prepare plot for validation losses each N steps
+    n_steps_list = []
+    fig_val_step, ax_val_step = plt.subplots()
+    plt.show(block=False)
+    val_losses_steps = []
+    ax_val_step.set_xlabel("Validation step")
+    ax_val_step.set_ylabel("Validation loss")
+    data_tracked_val_imgs = {}
 
     # Prepare training loop
     epoch_loss_dict = {}
@@ -75,62 +84,114 @@ def train_model(args):
     val_loss_dict = {}
     validation_data = {}
     epoch_range = tqdm(range(args.num_iter))
+    n_steps = 0
+    patience_counter = 0
 
     # Training loop
     model.train()
     for epoch in epoch_range:
+        similarity_dicts = []
         epoch_loss = 0.0
         num_batches = len(train_loader)
         for batch in train_loader:
+            n_steps += 1
             input_imgs, _ = batch
             input_imgs = input_imgs.to(args.device)
             optimizer.zero_grad()
-            output_imgs, stim_intensity = model(input_imgs)
+            output_imgs, stim_intensity, _ = model(input_imgs)
             # Mask input and output images to get black backgrounds for the clipasso loss calculation
             masked_input_imgs, mask = mask_input_imgs(input_imgs)
             masked_output_imgs = utils.mask_imgs(output_imgs, mask)
-            losses_dict = loss_func(masked_output_imgs, masked_input_imgs, model.parameters(), epoch, optimizer, mode = "train")
+            losses_dict, similarity_dict = loss_func(masked_output_imgs,
+                                                     masked_input_imgs,
+                                                     model.parameters(),
+                                                     epoch,
+                                                     optimizer,
+                                                     mode = "train")
+            similarity_dicts.append(similarity_dict)
             clipasso_loss = sum(losses_dict.values())
-            # Get the background activations to be penalized in the loss (model should focus on foreground)
+            # Penalize background activation (model should focus on foreground)
             background_activations = output_imgs * (1 - mask)
             background_penalization_term = torch.mean(background_activations ** 2)
+            # Final loss equation
             loss = clipasso_loss + args.penalization_weight * background_penalization_term
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             epoch_loss += loss.item()
+            # Validate model every N steps
+            if n_steps % args.val_step == 0:
+                n_steps_list.append(n_steps)
+                val_loss_batches = validate_model(model, mask_input_imgs, val_loader, loss_func, epoch, optimizer,
+                                                  args.device)
+                val_losses_steps.append(val_loss_batches)
+                ax_val_step.cla()
+                ax_val_step.plot(n_steps_list, val_losses_steps, label='Validation Loss', color='b')
+                plt.draw()
+                fig_val_step.canvas.flush_events()
+                plt.pause(0.1)
+                # Track validation image
+                utils.track_val_imgs(args,
+                                     n_img_tracked=args.num_img_tracked,
+                                     dataloader=val_loader,
+                                     model=model,
+                                     data_tracked_val_imgs=data_tracked_val_imgs,
+                                     n_steps=n_steps,
+                                     device='cpu',
+                                     seed=args.seed)
         epoch_loss = epoch_loss / num_batches
         epoch_loss_dict[epoch] = {'loss': epoch_loss}
+        mean_scores = { # TODO: Rename this
+            layer: sum(d[layer] for d in similarity_dicts) / len(similarity_dicts)
+            for layer in similarity_dicts[0]  # iterate over keys
+        }
+        print(mean_scores)
 
         # Apply lr warmup/decay
         if epoch < args.warmup_duration:
             scheduler_warmup.step()
-        else:
+        elif args.lr_scheduler:
             scheduler_cosine.step()
         lr = optimizer.param_groups[0]['lr']
 
         # Save ongoing training data every epoch
-        training_data[epoch] = {
-            'model_state_dict': copy.deepcopy(model.state_dict()),
-            'optimizer_state_dict': copy.deepcopy(optimizer.state_dict()),
-            'epoch_loss': epoch_loss_dict[epoch].get('loss')
-        }
+        training_data[epoch] = {'epoch_loss': epoch_loss_dict[epoch].get('loss')}
         print(f'Epoch [{epoch}/{len(epoch_range)}], Training Loss: {epoch_loss:.5f}')
 
         # Save ongoing validation data every epoch
         val_loss = validate_model(model, mask_input_imgs, val_loader, loss_func, epoch, optimizer, args.device)
         val_loss_dict[epoch] = {'loss': val_loss}
         # Store the current validation state, model, and optimizer info
-        validation_data[epoch] = {
-            'model_state_dict': copy.deepcopy(model.state_dict()),
-            'optimizer_state_dict': copy.deepcopy(optimizer.state_dict()),
-            'val_loss': val_loss_dict[epoch].get('loss')
-        }
+        validation_data[epoch] = {'val_loss': val_loss_dict[epoch].get('loss')}
+        print(f"Fc cos loss = {losses_dict['fc'] / args.clip_fc_loss_weight: .5f}")
         print(f'Epoch [{epoch}/{len(epoch_range)}], Validation Loss: {val_loss:.5f}')
 
         # Update files
-        torch.save(training_data, os.path.join(args.output_dir, "training_data_checkpoints.pth"))
-        torch.save(validation_data, os.path.join(args.output_dir, "validation_data_checkpoints.pth"))
+        torch.save(training_data, os.path.join(args.output_path, "training_data_checkpoints.pth"))
+        torch.save(validation_data, os.path.join(args.output_path, "validation_data_checkpoints.pth"))
+
+        # Save model state each time we get a better val loss
+        if val_loss < best_loss:
+            best_loss = val_loss
+            torch.save({'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'train_loss': val_loss_dict[epoch].get('loss')},
+                       os.path.join(args.output_path, f"checkpoint_epoch_{epoch}.pth"))
+
+        # Early stopping: difference between 2 val loss checks must be smaller than threshold
+        if epoch >= args.epoch_check and epoch % args.epoch_check == 0:
+            convergence = abs(val_loss-val_loss_dict[epoch-args.epoch_check]['loss']) <= args.delta_val_losses
+            if convergence:
+                patience_counter += 1
+                if patience_counter == args.patience:
+                    torch.save({'model_state_dict': model.state_dict(),
+                                    'optimizer_state_dict': optimizer.state_dict(),
+                                    'train_loss': val_loss_dict[epoch].get('loss')},
+                               os.path.join(args.output_path, f"model_converged_epoch_{epoch}.pth"))
+                    print(f"Early stopping at epoch {epoch}. ")
+                    break
+            else:
+                patience_counter = 0
 
         # Update variables for plotting
         epochs.append(epoch)
@@ -145,14 +206,12 @@ def train_model(args):
         ax.legend()
         plt.draw()
         fig.canvas.flush_events()
-
         # Clear and update the learning rate plot
         ax_lr.cla()
         ax_lr.plot(epochs, learning_rates, label='Learning Rate', color='g')
         ax_lr.legend()
         plt.draw()
         fig_lr.canvas.flush_events()
-
         plt.pause(0.1)
 
     plt.ioff()
@@ -168,17 +227,18 @@ def validate_model(model, mask_input_imgs, validation_loader, loss_func, epoch, 
         input_imgs, _ = batch
         input_imgs = input_imgs.to(device)
         with torch.no_grad():
-            output_imgs, _ = model(input_imgs)
+            output_imgs, _, _ = model(input_imgs)
             # Mask input and output images to get black background for the clipasso loss calculation
             masked_input_imgs, mask = mask_input_imgs(input_imgs)
             masked_output_imgs = utils.mask_imgs(output_imgs, mask)
-            losses_dict = loss_func(masked_output_imgs, masked_input_imgs, model.parameters(), epoch, optimizer,
+            losses_dict, _ = loss_func(masked_output_imgs, masked_input_imgs, model.parameters(), epoch, optimizer,
                                     mode="eval")
             clipasso_loss = sum(losses_dict.values())
             # Get the background activations to be penalized in the loss (model should focus on foreground)
             background_activations = output_imgs * (1 - mask)
             background_penalization_term = torch.mean(background_activations ** 2)
-            loss = clipasso_loss + 1 * background_penalization_term
+            # Get the final loss equation
+            loss = clipasso_loss + args.penalization_weight * background_penalization_term
             val_losses += loss.item()
     # Get the average validation loss of current epoch
     val_loss_epoch = val_losses / num_batches
@@ -192,9 +252,9 @@ if __name__ == "__main__":
     final_config = vars(args)
     try:
         model = train_model(args)
-        torch.save(model, f"{args.output_dir}/model.pth")
+        torch.save(model, f"{args.output_path}/model.pth")
     except BaseException as err:
         print(f"Unexpected error occurred:\n {err}")
         print(traceback.format_exc())
         sys.exit(1)
-    np.save(f"{args.output_dir}/model_config.npy", final_config)
+    np.save(f"{args.output_path}/model_config.npy", final_config)
