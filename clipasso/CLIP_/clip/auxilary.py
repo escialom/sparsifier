@@ -247,7 +247,9 @@ def multi_head_attention_forward(query: Tensor,
     # use hooks for the attention weights if necessary
     if attention_probs_forward_hook is not None and attention_probs_backwards_hook is not None:
         attention_probs_forward_hook(attn_output_weights)
-        attn_output_weights.register_hook(attention_probs_backwards_hook)
+        # Only register the backward hook if gradients are required
+        if attn_output_weights.requires_grad:
+            attn_output_weights.register_hook(attention_probs_backwards_hook)
 
     attn_output = torch.bmm(attn_output_weights, v)
     assert list(attn_output.size()) == [bsz * num_heads, tgt_len, head_dim]
