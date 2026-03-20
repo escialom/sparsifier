@@ -48,9 +48,9 @@ import dynaphos
 import config.model_config as model_config
 from model import PhospheneOptimizer
 
-from generate_stimuli_clean2 import DataLoading
-from generate_stimuli_clean2 import StimulusRendering
-from generate_stimuli_clean2 import SavingStimuli
+from StimGen import DataLoading
+from StimGen import StimulusRendering
+from StimGen import SavingStimuli
 
 
 # Load arguments and get dataloader
