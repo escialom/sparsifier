@@ -9,7 +9,7 @@ from config import model_config
 def luminance_matching(input_dir, output_dir, threshold=0.01):
 
     """
-    Match the luminance statistics of phosphene regions across images.
+    Match the luminance statistics of phosphene regions across images from the same density.
 
     This function performs mask-aware luminance matching on grayscale PNG
     images. Only pixels above `threshold` are considered part of the phosphene
@@ -20,6 +20,8 @@ def luminance_matching(input_dir, output_dir, threshold=0.01):
     the reference image. For every other image, the mean and standard deviation
     of the foreground pixels are adjusted to match those of the reference
     foreground. Background pixels remain zero.
+
+    Luminance matching should be performed separately for each phosphene density condition.
 
     Parameters
     ----------
@@ -120,6 +122,20 @@ def find_highest_luminance_img(input_dir):
 
     return path_highest_luminance_img, highest_luminance
 
+
 if __name__ == "__main__":
     args = model_config.parse_arguments()
-    luminance_matching(args.target_path, args.output_path)
+
+    base_path = Path(args.output_path) / "stimuli"
+
+    densities = [12, 16, 21, 27, 35, 46, 59, 77, 100]
+
+    for d in densities:
+        input_dir = base_path / f"All_stim_before_luminance{d}"
+        output_dir = base_path / f"All_stim_after_luminance{d}"
+
+        print(f"\nProcessing phosphene density: {d}")
+        print(f"Input: {input_dir}")
+        print(f"Output: {output_dir}")
+
+        luminance_matching(input_dir, output_dir)
