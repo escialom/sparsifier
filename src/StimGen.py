@@ -125,8 +125,9 @@ class StimulusRendering:
         phos_im, intensities = self.simulator(placement_map)
         # get the simulated current in Ampere
         current = self.simulator.effective_charge_per_second
+        top_elec_activated = (intensities > 0).float()
         num_elecs = torch.count_nonzero(intensities).item()
-        sim_current = (current * num_elecs).sum().item()
+        sim_current = (current * top_elec_activated).sum().item()
         return phos_im, num_elecs, sim_current, placement_map
 
     @staticmethod
