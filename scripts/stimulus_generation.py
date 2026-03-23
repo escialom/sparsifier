@@ -46,6 +46,7 @@ from pathlib import Path
 
 import dynaphos
 import config.model_config as model_config
+import pandas as pd
 from src.model import PhospheneOptimizer
 
 from src.StimGen import DataLoading
@@ -55,109 +56,199 @@ from src.StimGen import SavingStimuli
 
 # Load arguments and get dataloader
 args = model_config.parse_arguments()
-transform = transforms.Compose([transforms.Resize((args.image_scale, args.image_scale)), transforms.ToTensor()])
-data_manager = DataLoading(args.target_path,
-                           args.output_path,
-                           transform=transform)
+transform = transforms.Compose([
+    transforms.Resize((args.image_scale, args.image_scale)),
+    transforms.ToTensor()
+])
+data_manager = DataLoading(
+    args.target_path,
+    args.output_path,
+    transform=transform
+)
 loader, dataset = data_manager.get_data_loader(batch_size=1)
 
-# Load Simulator params
+# Load simulator params
 simulator_params = dynaphos.utils.load_params("../config/config_dynaphos/params.yaml")
-phosphene_coordinates = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(simulator_params,
-                                                                                                  n_phosphenes=1024,
-                                                                                                  use_seed=True)
+phosphene_coordinates = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(
+    simulator_params,
+    n_phosphenes=1024,
+    use_seed=True
+)
+
 # Load trained model
-model = PhospheneOptimizer(args=args,
-                           simulator_params=simulator_params,
-                           electrode_grid=1024,
-                           batch_size=1,
-                           phos_density=args.phos_density)
-weights = torch.load(f"{args.output_path}/checkpoint_epoch_416.pth", map_location=torch.device('cpu'))
-weights = weights['model_state_dict']
+model = PhospheneOptimizer(
+    args=args,
+    simulator_params=simulator_params,
+    electrode_grid=1024,
+    batch_size=1,
+    phos_density=args.phos_density
+)
+weights = torch.load(
+    f"{args.output_path}/checkpoint_epoch_416.pth",
+    map_location=torch.device("cpu")
+)
+weights = weights["model_state_dict"]
 model.load_state_dict(weights)
 model.eval()
 
-# Load Stimulus Generator
-StimulusRenderer = StimulusRendering(args,
-                                     batch_size=1,
-                                     model=model,
-                                     simulator_params=simulator_params,
-                                     phosphene_coordinates=phosphene_coordinates)
+# Load stimulus generator
+stimulus_renderer = StimulusRendering(
+    args,
+    batch_size=1,
+    model=model,
+    simulator_params=simulator_params,
+    phosphene_coordinates=phosphene_coordinates
+)
 
-# Load Saving class
+# Load saving classes
 save_stimuli = SavingStimuli(args.output_path)
 save_raw_contours = SavingStimuli(Path(args.output_path) / "raw_contours")
 save_raw_luminance = SavingStimuli(Path(args.output_path) / "raw_luminance")
+
+# Collect current information for all final saved stimuli
+current_rows = []
 
 # Stimulus generation loop
 for batch_idx, (batch, _) in enumerate(loader):
     for img_idx, input_img in enumerate(batch):
         input_img = input_img.unsqueeze(0)
+
         # Get the relative path to the input file
         relative_path, _ = loader.dataset.samples[batch_idx * len(batch) + img_idx]
         relative_path = Path(relative_path)
+
+        # Assumes original filenames are coded as: objectID_catID.png
+        object_id, cat_id = relative_path.stem.split("_", 1)
+
         # Get DNN stimuli
-        phos_DNN, n_elecs_DNN, current_DNN, DNN_map = StimulusRenderer.get_optimized_stimuli(input_img)
+        phos_DNN, n_elecs_DNN, current_DNN, DNN_map = stimulus_renderer.get_optimized_stimuli(input_img)
+
         # Get contours stimuli
-        contours = StimulusRenderer.get_contours(input_img)
-        phos_contours, n_elecs_cont, current_cont, cont_map = StimulusRenderer.phosphenize(contours)
-        # Save contours
+        contours = stimulus_renderer.get_contours(input_img)
+        phos_contours, n_elecs_cont, current_cont, cont_map = stimulus_renderer.phosphenize(contours)
+
+        # Save raw contours
         contour_output_dir = save_raw_contours.get_relative_output_dir(relative_path.parent, dataset)
-        save_raw_contours.save_stimuli(contours.squeeze(),
-                                       output_filename=f"{relative_path.stem}_contours_raw.png",
-                                       output_img_dir=contour_output_dir)
+        save_raw_contours.save_stimuli(
+            contours.squeeze(),
+            output_filename=f"{relative_path.stem}_contours_raw.png",
+            output_img_dir=contour_output_dir
+        )
+
         # Get luminance stimuli
-        gray_img = StimulusRenderer.get_luminance(input_img)
-        phos_lum, n_elecs_lum, current_lum, lum_map = StimulusRenderer.phosphenize(gray_img)
-        # Save luminance
+        gray_img = stimulus_renderer.get_luminance(input_img)
+        phos_lum, n_elecs_lum, current_lum, lum_map = stimulus_renderer.phosphenize(gray_img)
+
+        # Save raw luminance
         luminance_output_dir = save_raw_luminance.get_relative_output_dir(relative_path.parent, dataset)
-        save_raw_luminance.save_stimuli(gray_img.squeeze(),
-                                        output_filename=f"{relative_path.stem}_luminance_raw.png",
-                                        output_img_dir=luminance_output_dir)
+        save_raw_luminance.save_stimuli(
+            gray_img.squeeze(),
+            output_filename=f"{relative_path.stem}_luminance_raw.png",
+            output_img_dir=luminance_output_dir
+        )
+
         # Create dict of stimuli
-        stimulus_dict = {"DNN": {"num_elecs": n_elecs_DNN,
-                                 "phos_img": phos_DNN,
-                                 "current":current_DNN,
-                                 "map": DNN_map,},
-                         "contours": {"num_elecs": n_elecs_cont,
-                                      "phos_img": phos_contours,
-                                      "current":current_cont,
-                                      "map": cont_map,},
-                         "luminance": {"num_elecs": n_elecs_lum,
-                                       "phos_img": phos_lum,
-                                       "current": current_lum,
-                                       "map": lum_map,}}
+        stimulus_dict = {
+            "DNN": {
+                "num_elecs": n_elecs_DNN,
+                "phos_img": phos_DNN,
+                "current": current_DNN,
+                "map": DNN_map,
+            },
+            "contours": {
+                "num_elecs": n_elecs_cont,
+                "phos_img": phos_contours,
+                "current": current_cont,
+                "map": cont_map,
+            },
+            "luminance": {
+                "num_elecs": n_elecs_lum,
+                "phos_img": phos_lum,
+                "current": current_lum,
+                "map": lum_map,
+            }
+        }
+
         # Identify the placement map with the lowest number of electrodes
-        sorted_cond = StimulusRenderer.sort_num_elecs(stimulus_dict)
+        sorted_cond = stimulus_renderer.sort_num_elecs(stimulus_dict)
         primary = sorted_cond[0]
         secondary = sorted_cond[1]
         tertiary = sorted_cond[2]
-        # Define condition with lowest number of phosphenes as target img
+
+        # Define condition with lowest number of phosphenes as target image
         target_img = stimulus_dict[primary]["phos_img"]
         target_num_elecs = stimulus_dict[primary]["num_elecs"]
         current_target = stimulus_dict[primary]["current"]
+
         # Assign the other conditions to be matched
         current_map_one = stimulus_dict[secondary]["map"]
         current_map_two = stimulus_dict[tertiary]["map"]
-        # Match the number of elecs to the condition having the lowest number of elecs
-        reduced_map_one = StimulusRenderer.filter_num_elecs(current_map_one, target_num_elecs=target_num_elecs)
-        reduced_map_two = StimulusRenderer.filter_num_elecs(current_map_two, target_num_elecs=target_num_elecs)
-        img_phos_one, num_elecs_one, sim_current_one, _ = StimulusRenderer.phosphenize(reduced_map_one, reset_thresholds=True)
-        img_phos_two, num_elecs_two, sim_current_two, _ = StimulusRenderer.phosphenize(reduced_map_two, reset_thresholds=True)
+
+        # Match the number of electrodes to the condition having the lowest number of electrodes
+        reduced_map_one = stimulus_renderer.filter_num_elecs(
+            current_map_one,
+            target_num_elecs=target_num_elecs
+        )
+        reduced_map_two = stimulus_renderer.filter_num_elecs(
+            current_map_two,
+            target_num_elecs=target_num_elecs
+        )
+
+        img_phos_one, num_elecs_one, sim_current_one, _ = stimulus_renderer.phosphenize(
+            reduced_map_one,
+            reset_thresholds=True
+        )
+        img_phos_two, num_elecs_two, sim_current_two, _ = stimulus_renderer.phosphenize(
+            reduced_map_two,
+            reset_thresholds=True
+        )
+
         print(num_elecs_one, target_num_elecs)
         print(num_elecs_two, target_num_elecs)
-        # Creates csv file with number of phosphenes
+
+        # Save CSV file with number of phosphenes
         save_stimuli.save_num_phos(relative_path, args.phos_density, target_num_elecs)
         output_img_dir = save_stimuli.get_relative_output_dir(relative_path.parent, dataset)
+
         # Save img with lowest number of phos (target img)
-        save_stimuli.save_stimuli(target_img.squeeze(),
-                                  output_filename= f"{relative_path.stem}_{primary}_{args.phos_density}.png",
-                                  output_img_dir=output_img_dir)
+        save_stimuli.save_stimuli(
+            target_img.squeeze(),
+            output_filename=f"{relative_path.stem}_{primary}_{args.phos_density}.png",
+            output_img_dir=output_img_dir
+        )
+        current_rows.append({
+            "Condition": primary,
+            "objectID": object_id,
+            "current": current_target,
+            "catID": cat_id,
+        })
+
         # Save img with 2nd lowest number of phos
-        save_stimuli.save_stimuli(img_phos_one.squeeze(),
-                                  output_filename=f"{relative_path.stem}_{secondary}_{args.phos_density}.png",
-                                  output_img_dir=output_img_dir)
+        save_stimuli.save_stimuli(
+            img_phos_one.squeeze(),
+            output_filename=f"{relative_path.stem}_{secondary}_{args.phos_density}.png",
+            output_img_dir=output_img_dir
+        )
+        current_rows.append({
+            "Condition": secondary,
+            "objectID": object_id,
+            "current": sim_current_one,
+            "catID": cat_id,
+        })
+
         # Save img with highest number of phos
-        save_stimuli.save_stimuli(img_phos_two.squeeze(),
-                                  output_filename=f"{relative_path.stem}_{tertiary}_{args.phos_density}.png",
-                                  output_img_dir=output_img_dir)
+        save_stimuli.save_stimuli(
+            img_phos_two.squeeze(),
+            output_filename=f"{relative_path.stem}_{tertiary}_{args.phos_density}.png",
+            output_img_dir=output_img_dir
+        )
+        current_rows.append({
+            "Condition": tertiary,
+            "objectID": object_id,
+            "current": sim_current_two,
+            "catID": cat_id,
+        })
+
+# Save one CSV with current values for all final matched stimuli
+current_df = pd.DataFrame(current_rows, columns=["Condition", "objectID", "current", "catID"])
+current_df.to_csv(Path(args.output_path) / "stimulus_currents.csv", index=False)
