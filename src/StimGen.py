@@ -94,9 +94,9 @@ class StimulusRendering:
 
     @torch.no_grad()
     def get_optimized_stimuli(self, input_img):
-        output_img, intensity, placement_map = self.model(input_img)
+        output_img, intensity, current, placement_map = self.model(input_img)
         num_elecs = torch.count_nonzero(intensity).item()
-        return output_img, num_elecs, placement_map
+        return output_img, num_elecs, current, placement_map
 
     @torch.no_grad()
     def get_contours(self,input_img):
@@ -123,8 +123,11 @@ class StimulusRendering:
             placement_map = self.simulator.sample_stimulus(placement_map)
             self.simulator.reset()
         phos_im, intensities = self.simulator(placement_map)
+        # get the simulated current in Ampere
+        current = self.simulator.effective_charge_per_second
         num_elecs = torch.count_nonzero(intensities).item()
-        return phos_im, num_elecs, placement_map
+        sim_current = (current * num_elecs).sum().item()
+        return phos_im, num_elecs, sim_current, placement_map
 
     @staticmethod
     def sort_num_elecs(stimulus_dict):

@@ -19,9 +19,9 @@ def parse_arguments():
     # =================================
     # ============ general ============
     # =================================
-    parser.add_argument("--target_path", type=str, default="./data/test_set",
+    parser.add_argument("--target_path", type=str, default="../data/test_set",
                         help="target image path")
-    parser.add_argument("--output_path", type=str, default="./output")
+    parser.add_argument("--output_path", type=str, default="../output")
     parser.add_argument("--use_gpu", type=int, default=1)
     parser.add_argument("--seed", type=int, default=29)
     parser.add_argument("--mask_object", type=int, default=1)

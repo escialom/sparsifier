@@ -90,11 +90,15 @@ class PhospheneOptimizer(nn.Module):
         phosphene_placement_map = self.simulator.sample_stimulus(phosphene_placement_map)
         self.simulator.reset()
         optimized_im, intensity = self.simulator(phosphene_placement_map)
+        # Get the simulated total current in Amperes for the current batch
+        current = self.simulator.effective_charge_per_second
+        top_elec_activated = (intensity > 0).float()
+        sim_current = (current * top_elec_activated).sum().item()
         # Add the channel dimension back [Bx3xHxW]
         optimized_im = optimized_im.unsqueeze(0)
         optimized_im = optimized_im.permute(1, 0, 2, 3)
         optimized_im = optimized_im.repeat(1, 3, 1, 1)
-        return optimized_im, intensity, phosphene_placement_map
+        return optimized_im, intensity, sim_current, phosphene_placement_map
 
     def contours_extraction(self, img_batch, requires_grad=False):
         with torch.no_grad():

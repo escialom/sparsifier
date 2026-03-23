@@ -62,7 +62,7 @@ data_manager = DataLoading(args.target_path,
 loader, dataset = data_manager.get_data_loader(batch_size=1)
 
 # Load Simulator params
-simulator_params = dynaphos.utils.load_params("./config/config_dynaphos/params.yaml")
+simulator_params = dynaphos.utils.load_params("../config/config_dynaphos/params.yaml")
 phosphene_coordinates = dynaphos.cortex_models.get_visual_field_coordinates_probabilistically(simulator_params,
                                                                                                   n_phosphenes=1024,
                                                                                                   use_seed=True)
@@ -97,10 +97,10 @@ for batch_idx, (batch, _) in enumerate(loader):
         relative_path, _ = loader.dataset.samples[batch_idx * len(batch) + img_idx]
         relative_path = Path(relative_path)
         # Get DNN stimuli
-        phos_DNN, n_elecs_DNN, DNN_map = StimulusRenderer.get_optimized_stimuli(input_img)
+        phos_DNN, n_elecs_DNN, current_DNN, DNN_map = StimulusRenderer.get_optimized_stimuli(input_img)
         # Get contours stimuli
         contours = StimulusRenderer.get_contours(input_img)
-        phos_contours, n_elecs_cont, cont_map = StimulusRenderer.phosphenize(contours)
+        phos_contours, n_elecs_cont, current_cont, cont_map = StimulusRenderer.phosphenize(contours)
         # Save contours
         contour_output_dir = save_raw_contours.get_relative_output_dir(relative_path.parent, dataset)
         save_raw_contours.save_stimuli(contours.squeeze(),
@@ -108,7 +108,7 @@ for batch_idx, (batch, _) in enumerate(loader):
                                        output_img_dir=contour_output_dir)
         # Get luminance stimuli
         gray_img = StimulusRenderer.get_luminance(input_img)
-        phos_lum, n_elecs_lum, lum_map = StimulusRenderer.phosphenize(gray_img)
+        phos_lum, n_elecs_lum, current_lum, lum_map = StimulusRenderer.phosphenize(gray_img)
         # Save luminance
         luminance_output_dir = save_raw_luminance.get_relative_output_dir(relative_path.parent, dataset)
         save_raw_luminance.save_stimuli(gray_img.squeeze(),
@@ -117,12 +117,15 @@ for batch_idx, (batch, _) in enumerate(loader):
         # Create dict of stimuli
         stimulus_dict = {"DNN": {"num_elecs": n_elecs_DNN,
                                  "phos_img": phos_DNN,
+                                 "current":current_DNN,
                                  "map": DNN_map,},
                          "contours": {"num_elecs": n_elecs_cont,
                                       "phos_img": phos_contours,
+                                      "current":current_cont,
                                       "map": cont_map,},
                          "luminance": {"num_elecs": n_elecs_lum,
                                        "phos_img": phos_lum,
+                                       "current": current_lum,
                                        "map": lum_map,}}
         # Identify the placement map with the lowest number of electrodes
         sorted_cond = StimulusRenderer.sort_num_elecs(stimulus_dict)
@@ -132,14 +135,15 @@ for batch_idx, (batch, _) in enumerate(loader):
         # Define condition with lowest number of phosphenes as target img
         target_img = stimulus_dict[primary]["phos_img"]
         target_num_elecs = stimulus_dict[primary]["num_elecs"]
+        current_target = stimulus_dict[primary]["current"]
         # Assign the other conditions to be matched
         current_map_one = stimulus_dict[secondary]["map"]
         current_map_two = stimulus_dict[tertiary]["map"]
         # Match the number of elecs to the condition having the lowest number of elecs
         reduced_map_one = StimulusRenderer.filter_num_elecs(current_map_one, target_num_elecs=target_num_elecs)
         reduced_map_two = StimulusRenderer.filter_num_elecs(current_map_two, target_num_elecs=target_num_elecs)
-        img_phos_one, num_elecs_one, _ = StimulusRenderer.phosphenize(reduced_map_one, reset_thresholds=True)
-        img_phos_two, num_elecs_two, _ = StimulusRenderer.phosphenize(reduced_map_two, reset_thresholds=True)
+        img_phos_one, num_elecs_one, sim_current_one, _ = StimulusRenderer.phosphenize(reduced_map_one, reset_thresholds=True)
+        img_phos_two, num_elecs_two, sim_current_two, _ = StimulusRenderer.phosphenize(reduced_map_two, reset_thresholds=True)
         print(num_elecs_one, target_num_elecs)
         print(num_elecs_two, target_num_elecs)
         # Creates csv file with number of phosphenes

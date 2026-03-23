@@ -98,7 +98,7 @@ def train_model(args):
             input_imgs, _ = batch
             input_imgs = input_imgs.to(args.device)
             optimizer.zero_grad()
-            output_imgs, stim_intensity, _ = model(input_imgs)
+            output_imgs, stim_intensity, _, _ = model(input_imgs)
             # Mask input and output images to get black backgrounds for the clipasso loss calculation
             masked_input_imgs, mask = mask_input_imgs(input_imgs)
             masked_output_imgs = utils.mask_imgs(output_imgs, mask)
