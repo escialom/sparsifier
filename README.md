@@ -48,7 +48,7 @@ Stimuli can be matched for the number of active electrodes to enable fair experi
 ## Repository Structure
 
 ```text
-project/
+object-sparsifier-prosthetic-vision/
 │
 ├── config/
 │   └── model_config.py
