@@ -1,152 +1,258 @@
-<<<<<<< HEAD
-# CLIPasso: Semantically-Aware Object Sketching (SIGGRAPH 2022)
+# Phosphene Optimizer for Visual Prostheses
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yael-vinker/CLIPasso/blob/main/CLIPasso.ipynb) 
-[![arXiv](https://img.shields.io/badge/arXiv-2108.00946-b31b1b.svg)](https://arxiv.org/abs/2202.05822)
+A deep learning framework for generating optimized phosphene representations of natural images for visual prosthesis research.
 
+The project trains a convolutional neural network to learn phosphene placement maps that maximize the perceptual quality of electrically stimulated visual representations while controlling phosphene density. The framework integrates the DynaPhos simulator (van der Grinten et al., 2024), contour extraction methods, and CLIP-based perceptual objectives to generate and evaluate phosphene stimuli (CLIPASSO; Vinker et al., 2022).
 
+---
 
-[[Project Website](https://clipasso.github.io/clipasso/)]
-<br>
-<br>
-This is the official implementation of CLIPasso, a method for converting an image of an object to a sketch, allowing for varying levels of abstraction. <br>
+## Overview
 
-<br>
-<br>
+Visual prostheses restore limited vision by electrically stimulating the visual pathway, producing percepts known as *phosphenes*. Because the number of available electrodes is limited, selecting the most informative image regions is a critical challenge.
 
-![](clipasso/repo_images/teaser2.png?raw=true)
-At a high level, we define a sketch as a set of Bézier curves and use a differentiable rasterizer ([diffvg](https://github.com/BachiLi/diffvg)) to optimize the parameters of the curves directly with respect to a CLIP-based perceptual loss. <br>
-We combine the final and intermediate activations of a pre-trained CLIP model to achieve both geometric and semantic simplifications.
-<br> The abstraction degree is controlled by varying the number of strokes.
-    
-<br>
+This repository implements a neural-network-based phosphene optimization pipeline that:
+
+- Learns spatial phosphene placement maps from images
+- Generates simulated phosphene vision using DynaPhos (van der Grinten et al., 2024)
+- Supports contour-based and luminance-based baselines
+- Uses perceptual losses (including CLIP-based objectives from Vinker et al., 2022)
+- Produces matched phosphene stimuli for behavioral experiments
+  
+---
+
+## Main Features
+
+### Deep Learning Optimization
+- CNN-based phosphene placement prediction
+- PyTorch implementation
+- Automatic training and validation pipeline
+- Learning-rate warmup and cosine scheduling support
+
+### Phosphene Simulation
+- Integration with DynaPhos
+- Probabilistic phosphene coordinate generation
+- Adjustable phosphene density
+- Reproducible simulations using fixed seeds
+
+### Stimulus Generation
+The framework can generate:
+
+1. **DNN-Optimized Stimuli**
+2. **Contour-Based Stimuli**
+3. **Luminance-Based Stimuli**
+
+Stimuli can be matched for the number of active electrodes to enable fair experimental comparisons.
+
+---
+
+## Repository Structure
+
+```text
+project/
+│
+├── config/
+│   └── model_config.py
+│
+├── src/
+│   ├── model.py
+│   ├── StimGen.py
+│   ├── ContourExtract.py
+│   └── utils.py
+│
+├── dynaphos/
+│   ├── simulator.py
+│   ├── cortex_models.py
+│   ├── image_processing.py
+│   └── plotting.py
+│
+├── clipasso/
+│   ├── models/
+│   └── painterly_rendering.py
+│
+├── scripts/
+│   ├── training_model.py
+│   ├── stimulus_generation.py
+│   ├── clip_semantic_consistency.py
+│   ├── background_extraction.py
+│   ├── get_contours.py
+│   └── luminance_matching.py
+│
+├── data/
+├── output/
+└── README.md
+```
+
+---
 
 ## Installation
-### Installation via Docker [Recommended]
-You can simply pull the docker image from docker hub, containing all the required libraries and packages:
-```bash
-docker pull yaelvinker/clipasso_docker
-docker run --name clipsketch -it yaelvinker/clipasso_docker /bin/bash
-```
-Now you should have a running container.
-Inside the container, clone the repository:
+
+### Clone the Repository
 
 ```bash
-cd /home
-git clone https://github.com/yael-vinker/CLIPasso.git
-cd CLIPasso/
+git clone https://github.com/escialom/object-sparsifier-prosthetic-vision.git
+cd object-sparsifier-prosthetic-vision
 ```
-Now you are all set and ready to move to the next stage (Run Demo).
 
-### Installation via pip
-Note that it is recommended to use the provided docker image, as we rely on diffvg which has specific requirements and does not compile smoothly on every environment.
-1.  Clone the repo:
+### Create a Conda Environment
+
 ```bash
-git clone https://github.com/yael-vinker/CLIPasso.git
-cd CLIPasso
+conda create -n phosphene python=3.11
+conda activate phosphene
 ```
-2. Create a new environment and install the libraries:
+
+### Install Dependencies
+
 ```bash
-python3.7 -m venv clipsketch
-source clipsketch/bin/activate
 pip install -r requirements.txt
-pip install torch==1.7.1+cu101 torchvision==0.8.2+cu101 -f https://download.pytorch.org/whl/torch_stable.html
-pip install git+https://github.com/openai/CLIP.git
 ```
-3. Install diffvg:
+
+---
+
+## Training
+
+The main training script is:
+
 ```bash
-git clone https://github.com/BachiLi/diffvg
-cd diffvg
-git submodule update --init --recursive
-python setup.py install
+python scripts/training_model.py
 ```
 
-<br>
+Important training parameters can be modified in:
 
-## Run Demo
+```text
+config/model_config.py
+```
 
-<!-- #### Run a model on your own image -->
+Examples include:
 
-The input images to be drawn should be located under "target_images".
-To sketch your own image, from CLIPSketch run:
+- Learning rate
+- Number of epochs
+- Batch size
+- Image size
+- Phosphene density
+
+---
+
+## Generating Stimuli
+
+After training a model, generate phosphene stimuli using:
+
 ```bash
-python run_object_sketching.py --target_file <file_name>
+python scripts/stimulus_generation.py
 ```
-The resulting sketches will be saved to the "output_sketches" folder, in SVG format.
 
-Optional arguments:
-* ```--num_strokes``` Defines the number of strokes used to create the sketch, which determines the level of abstraction. The default value is set to 16, but for different images, different numbers might produce better results. 
-* ```--mask_object``` It is recommended to use images without a background, however, if your image contains a background, you can mask it out by using this flag with "1" as an argument.
-* ```--fix_scale``` If your image is not squared, it might be cut off, it is recommended to use this flag with 1 as input to automatically fix the scale without cutting the image.
-* ```--num_sketches``` As stated in the paper, by default there will be three parallel running scripts to synthesize three sketches and automatically choose the best one. However, for some environments (for example when running on CPU) this might be slow, so you can specify --num_sketches 1 instead.
-* ```-cpu``` If you want to run the code on the cpu (not recommended as it might be very slow).
+The script:
 
-<br>
-<b>For example, below are optional running configurations:</b>
-<br>
+- Loads a trained checkpoint
+- Generates optimized phosphene images
+- Generates contour-based stimuli
+- Generates luminance-based stimuli
+- Matches all conditions for electrode count
+- Saves the resulting stimuli
 
-Sketching the camel with defauls parameters:
+---
+
+## Model Architecture
+
+The optimization model consists of:
+
+### Encoder
+- Convolutional layers
+- Max-pooling operations
+- LeakyReLU activations
+
+### Decoder
+- Transposed convolutions
+- Spatial upsampling
+- Sigmoid output activation
+
+The network predicts a phosphene placement map that is subsequently converted into a simulated phosphene image through the DynaPhos simulator (van der Grinten et al., 2024).
+
+---
+
+## Example Workflow
+
+### 1. Prepare Dataset
+
+```text
+train_set/
+├── class_1/
+├── class_2/
+└── ...
+
+val_set/
+├── class_1/
+├── class_2/
+└── ...
+```
+
+### 2. Preprocess the dataset
+
 ```bash
-python run_object_sketching.py --target_file "camel.png"
+python scripts/RGBA_to_RGB.py
+python scripts/background_extraction.py
+python scripts/clip_semantic_consistency.py
 ```
-Producing a single sketch of the camel at lower level of abstraction with 32 strokes:
+
+### 3. Train the Model
+
 ```bash
-python run_object_sketching.py --target_file "camel.png" --num_strokes 32 --num_sketches 1
+python scripts/training_model.py
 ```
-Sketching the flamingo with higher level of abstraction, using 8 strokes:
+
+### 4. Generate Stimuli
+
 ```bash
-python run_object_sketching.py --target_file "flamingo.png" --num_strokes 8
+python scripts/stimulus_generation.py
 ```
 
-## Related Work
-[CLIPDraw](https://arxiv.org/abs/2106.14843): Exploring Text-to-Drawing Synthesis through Language-Image Encoders, 2021 (Kevin Frans, L.B. Soros, Olaf Witkowski)
+### 5. Postprocessing for psychophysical experiments
+```bash
+python scripts/luminance_matching.py
+```
 
-[Diffvg](https://github.com/BachiLi/diffvg): Differentiable vector graphics rasterization for editing and learning, ACM Transactions on Graphics 2020 (Tzu-Mao Li, Michal Lukáč, Michaël Gharbi, Jonathan Ragan-Kelley)
+---
 
+## Dependencies
+
+Major libraries used in this project include:
+
+- PyTorch
+- TorchVision
+- OpenCV
+- NumPy
+- SciPy
+- Scikit-Image
+- Scikit-Learn
+- Matplotlib
+- Plotly
+- Weights & Biases (W&B)
+- DynaPhos
+- CLIP
+- U²-Net
+
+---
 
 ## Citation
-If you make use of our work, please cite our paper:
 
-```
-@misc{vinker2022clipasso,
-      title={CLIPasso: Semantically-Aware Object Sketching}, 
-      author={Yael Vinker and Ehsan Pajouheshgar and Jessica Y. Bo and Roman Christian Bachmann and Amit Haim Bermano and Daniel Cohen-Or and Amir Zamir and Ariel Shamir},
-      year={2022},
-      eprint={2202.05822},
-      archivePrefix={arXiv},
-      primaryClass={cs.GR}
+If you use this code in academic work, please cite:
+
+```bibtex
+@software{phosphene_optimizer,
+  title  = {Phosphene Optimizer for Visual Prostheses},
+  author = {Your Name},
+  year   = {2026},
+  url    = {https://github.com/<username>/<repository>}
 }
 ```
 
+---
+
 ## License
-Shield: [![CC BY-NC-SA 4.0][cc-by-nc-sa-shield]][cc-by-nc-sa]
 
-This work is licensed under a
-[Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License][cc-by-nc-sa].
+This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
 
-[![CC BY-NC-SA 4.0][cc-by-nc-sa-image]][cc-by-nc-sa]
-
-[cc-by-nc-sa]: http://creativecommons.org/licenses/by-nc-sa/4.0/
-[cc-by-nc-sa-image]: https://licensebuttons.net/l/by-nc-sa/4.0/88x31.png
-[cc-by-nc-sa-shield]: https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg
-=======
-# About the project
-A fully differentiable and biologically plausible simulation of cortical prosthetic vision, which can be used for end-to-end optimization.
-
-## Installation
-`pip install dynaphos`
-
-## Getting Started
-- Download the default configuration file (config/params.yaml) from [our repository](https://github.com/neuralcodinglab/dynaphos/) and adjust according to needs. 
-- Run the `test` suite.
-- See the `examples` directory for simple use cases.
-
-## Citation
-van der Grinten, M., van Steveninck, J. D. R., Lozano, A., Pijnacker, L., Rueckauer, B., Roelfsema, P., Marcel van Gerven, Richard van Wezel, Umut Güçlü & Güçlütürk, Y. (2024). Towards biologically plausible phosphene simulation for the differentiable optimization of visual cortical prostheses. eLife, 13, e85812. [https://doi.org/10.7554/eLife.85812](https://doi.org/10.7554/eLife.85812). 
-
-## Experiments
-For the end-to-end optimization experiments in our publication see [this repository](https://github.com/neuralcodinglab/viseon/tree/dynaphos-paper). The code for the experiments described in our publication (using this simulator) can be found in [this repository](https://github.com/neuralcodinglab/dynaphos-experiments). All other code that was used in our publication can be made available on request.
+---
 
 ## Contact
-Feel free to submit an issue, we're happy to help.
->>>>>>> dynaphos/main
+
+For questions, bug reports, or collaborations, please open an issue or contact the repository maintainer.
