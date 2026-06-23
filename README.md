@@ -237,3 +237,36 @@ Major libraries used in this project include:
 This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
 
 ---
+
+## Acknowledgements
+
+This project builds upon several excellent open-source projects:
+
+### DynaPhos
+
+DynaPhos was used for phosphene simulation and visual prosthesis modeling.
+
+```bibtex
+@article{vanRheede2023Dynaphos,
+  ...
+}
+```
+
+Repository:
+https://github.com/neuralcodinglab/dynaphos
+
+### CLIPasso
+
+The training pipeline has been taken from the CLIPasso paper.
+
+```bibtex
+@inproceedings{Vinker2022CLIPasso,
+  title={CLIPasso: Semantically-Aware Object Sketching},
+  author={Vinker, Yoni and others},
+  booktitle={SIGGRAPH},
+  year={2022}
+}
+```
+
+Repository:
+https://github.com/yael-vinker/CLIPasso
