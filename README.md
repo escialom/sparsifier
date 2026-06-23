@@ -77,8 +77,8 @@ object-sparsifier-prosthetic-vision/
 │   ├── get_contours.py
 │   └── luminance_matching.py
 │
-├── data/
-├── output/
+├── LICENSE
+├── requirements.txt
 └── README.md
 ```
 
@@ -246,10 +246,9 @@ This project builds upon several excellent open-source projects:
 
 DynaPhos was used for phosphene simulation and visual prosthesis modeling.
 
-```bibtex
-@article{vanRheede2023Dynaphos,
-  ...
-}
+```
+van der Grinten, M., van Steveninck, J. D. R., Lozano, A., Pijnacker, L., Rueckauer, B., Roelfsema, P., Marcel van Gerven, Richard van Wezel, Umut Güçlü & Güçlütürk, Y. (2024). Towards biologically plausible phosphene simulation for the differentiable optimization of visual cortical prostheses. eLife, 13, e85812. https://doi.org/10.7554/eLife.85812.
+
 ```
 
 Repository:
