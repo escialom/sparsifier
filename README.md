@@ -232,27 +232,8 @@ Major libraries used in this project include:
 
 ---
 
-## Citation
-
-If you use this code in academic work, please cite:
-
-```bibtex
-@software{phosphene_optimizer,
-  title  = {Phosphene Optimizer for Visual Prostheses},
-  author = {Your Name},
-  year   = {2026},
-  url    = {https://github.com/<username>/<repository>}
-}
-```
-
----
-
 ## License
 
 This work is licensed under the Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License (CC BY-NC-SA 4.0).
 
 ---
-
-## Contact
-
-For questions, bug reports, or collaborations, please open an issue or contact the repository maintainer.
